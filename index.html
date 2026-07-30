@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-<link rel="manifest" href="/file-storage-app.json">
-<link rel="icon" href="/icon-192.png">
-<link rel="apple-touch-icon" href="/icon-512.png">
 <meta name="theme-color" content="#ffffff">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -55,6 +52,8 @@
   .btn-primary { background-color: var(--primary); color: white; }
   .btn-primary:hover { background-color: var(--primary-hover); }
   .btn-secondary { background-color: #bdc3c7; color: white; }
+  .btn-success { background-color: var(--success); color: white; }
+  .btn-success:hover { background-color: var(--success-hover); }
 
   /* 一覧カード（案件管理アプリのresult-itemを踏襲したシンプル版） */
   .result-item {
@@ -68,6 +67,18 @@
   .badge-status.仮登録 { background:#fef3c7; color:#92400e; }
   .badge-status.通常 { background:#dcfce7; color:#166534; }
   .file-title { font-size:16px; font-weight:bold; color:#0f172a; }
+
+  /* モーダル（案件管理アプリと共通デザイン） */
+  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6);
+    z-index: 5000; display: flex; align-items: center; justify-content: center; }
+  .modal-content { background: white; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-sizing: border-box;
+    max-height: 90vh; overflow-y: auto; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; color: #334155; }
+  .form-group input, .form-group select, .form-group textarea { width: 100%; box-sizing: border-box; }
+  .link-chip { display:inline-flex; align-items:center; gap:6px; background:#e0f2fe; color:#0369a1;
+    padding:4px 10px; border-radius:14px; font-size:13px; margin:2px; }
+  .link-chip .remove { cursor:pointer; font-weight:bold; }
 
   .login-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: white; }
   .login-box { width: 100%; max-width: 400px; padding: 32px; box-sizing: border-box; }
@@ -85,6 +96,18 @@
 </style>
 </head>
 <body>
+
+<!-- 画面が真っ白になる代わりに、JSエラーが起きた場合はここに表示する（デバッグ用） -->
+<div id="fatalErrorBanner" style="display:none; position:fixed; top:0; left:0; right:0; background:#dc2626; color:white; padding:16px; font-size:14px; z-index:99999; white-space:pre-wrap;"></div>
+<script>
+  window.onerror = function(message, source, lineno, colno, error) {
+    var banner = document.getElementById('fatalErrorBanner');
+    if (banner) {
+      banner.style.display = 'block';
+      banner.textContent = 'JSエラーが発生しました: ' + message + ' (' + source + ':' + lineno + ')';
+    }
+  };
+</script>
 
 <!-- ログイン画面 -->
 <div id="loginScreen" class="login-container" style="display:none;">
@@ -113,17 +136,31 @@
 
 <!-- メインアプリ画面 -->
 <div id="mainApp" style="display:none; padding: 12px;">
-  <div style="display: flex; align-items: center; margin: 12px 12px 8px 12px;">
+  <div style="display: flex; align-items: center; gap:8px; margin: 12px 12px 8px 12px; flex-wrap:wrap;">
     <button type="button" id="logoutBtn" class="mini-logout-btn" onclick="handleLogout()">
       <span class="material-symbols-outlined">logout</span><span>ログアウト</span>
+    </button>
+    <button type="button" class="mini-logout-btn" onclick="openTagModal()">
+      <span class="material-symbols-outlined">sell</span><span>タグ管理</span>
+    </button>
+    <button type="button" class="mini-logout-btn" onclick="openTrashModal()">
+      <span class="material-symbols-outlined">delete</span><span>ゴミ箱</span>
+    </button>
+    <button type="button" id="deletedFilesBtn" class="mini-logout-btn" style="display:none;" onclick="openDeletedFilesModal()">
+      <span class="material-symbols-outlined">restore_from_trash</span><span>削除済み管理（管理者）</span>
     </button>
     <span id="userDisplayLabel" style="margin-left: auto; font-size: 13px; color: var(--text-sub); font-weight: bold; background: #e2e8f0; padding: 4px 12px; border-radius: 20px;"></span>
   </div>
 
   <!-- 検索・フィルターセクション -->
   <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 24px;">
-    <div style="font-size: 22px; font-weight: bold; color: #1e293b; margin-bottom: 16px; display:flex; align-items:center; gap:8px;">
-      <span class="material-symbols-outlined" style="color:var(--primary); font-size:34px;">folder_open</span> ファイル保存アプリ
+    <div style="font-size: 22px; font-weight: bold; color: #1e293b; margin-bottom: 16px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+      <span style="display:flex; align-items:center; gap:8px;">
+        <span class="material-symbols-outlined" style="color:var(--primary); font-size:34px;">folder_open</span> ファイル保存アプリ
+      </span>
+      <button class="btn btn-primary" onclick="openCreateModal()">
+        <span class="material-symbols-outlined">add_circle</span> 新規登録
+      </button>
     </div>
 
     <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
@@ -158,22 +195,153 @@
   <div id="results" style="margin: 0 12px;"></div>
 </div>
 
+<!-- 新規アップロードモーダル（S03） -->
+<div id="createModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content">
+    <h2 style="margin-top:0; margin-bottom:20px; color:#1e293b; border-bottom:3px solid var(--success); padding-bottom:10px;">
+      新規ファイル登録
+    </h2>
+    <form id="createForm" onsubmit="handleCreateSubmit(event)">
+      <div class="form-group">
+        <label>ファイル</label>
+        <input type="file" id="uploadFileInput" required>
+      </div>
+      <div class="form-group">
+        <label>表示名（空欄の場合はファイル名を使用）</label>
+        <input type="text" id="uploadDisplayName" placeholder="例：〇〇様邸_見積書">
+      </div>
+      <div class="form-group">
+        <label>紐付け先（案件No・任意・複数可）</label>
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="linkCaseNoInput" placeholder="案件Noを入力してEnter" style="flex:1;">
+        </div>
+        <div id="linkChipArea" style="margin-top:6px;"></div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:24px;">
+        <button type="button" class="btn btn-secondary" onclick="closeCreateModal()">閉じる</button>
+        <button type="submit" class="btn btn-success">登録する</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 詳細確認・確定保存／編集モーダル（S04・S05・S06を統合した簡易版） -->
+<div id="detailModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content" style="max-width:640px;">
+    <h2 id="detailModalTitle" style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;"></h2>
+
+    <!-- Driveプレビュー（画像・PDF・Office文書すべてDriveの標準プレビューで表示できるため形式分岐は不要） -->
+    <div id="detailPreviewArea" style="margin-bottom:16px;"></div>
+
+    <div id="detailOcrPreview" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; color:#475569; max-height:140px; overflow-y:auto; white-space:pre-wrap;"></div>
+
+    <form id="detailForm" onsubmit="handleDetailSubmit(event)">
+      <input type="hidden" id="detailFileId">
+      <input type="hidden" id="detailRowNumber">
+      <input type="hidden" id="detailMode"><!-- confirm（仮登録の確定） or update（確定済みの編集） -->
+      <div class="form-group">
+        <label>表示名</label>
+        <input type="text" id="detailDisplayName" required>
+      </div>
+      <div class="form-group">
+        <label>用途種別ID（マスタ画面はPhase8で実装予定のため、現時点は手入力）</label>
+        <input type="text" id="detailUseTypeId">
+      </div>
+      <div class="form-group">
+        <label>タグ</label>
+        <div id="detailTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
+      <div class="form-group">
+        <label>説明・備考</label>
+        <textarea id="detailDescription" rows="3"></textarea>
+      </div>
+      <div style="display:flex; justify-content:space-between; gap:8px; margin-top:20px;">
+        <button type="button" id="detailDeleteBtn" class="btn" style="background:#fee2e2; color:#dc2626;" onclick="handleDeleteFromDetail()">
+          <span class="material-symbols-outlined">delete</span> ゴミ箱へ移動
+        </button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-secondary" onclick="closeDetailModal()">閉じる</button>
+          <button type="submit" id="detailSubmitBtn" class="btn btn-success">確定保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- タグ管理モーダル（S08） -->
+<div id="tagModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content">
+    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;">タグ管理</h2>
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <input type="text" id="newTagNameInput" placeholder="新規タグ名を入力">
+      <button class="btn btn-primary" onclick="handleAddTag()">追加</button>
+    </div>
+    <div id="tagListArea"></div>
+    <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeTagModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ゴミ箱画面（S07） -->
+<div id="trashModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content">
+    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;">ゴミ箱（30日以内は復元できます）</h2>
+    <div id="trashListArea"></div>
+    <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeTrashModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 削除済みファイル管理画面（S12・管理者専用） -->
+<div id="deletedFilesModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content">
+    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid #dc2626; padding-bottom:10px;">削除済みファイル管理（管理者専用）</h2>
+    <div id="deletedFilesListArea"></div>
+    <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeDeletedFilesModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 
 <script>
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbxdJ05Em_f_c-KBTKFEXdcEmGgXSPDSjh0KQwlQnbqcbpvebAongHKCf7WaOp0YiGf_/exec';
 
+  // GASのHtmlServiceはサンドボックス化されたiframe内でアプリを配信するため、
+  // ブラウザや設定によっては localStorage へのアクセスがブロックされ SecurityError が
+  // 発生することがある（既知の問題）。ここで安全に読み書きできるようラップする。
+  function safeLocalStorage() {
+    try {
+      const testKey = "__fs_storage_test__";
+      localStorage.setItem(testKey, "1");
+      localStorage.removeItem(testKey);
+      return localStorage;
+    } catch (e) {
+      console.warn("localStorageが利用できません。メモリ上の一時ストレージで代替します:", e.message);
+      const memoryStore = {};
+      return {
+        getItem: (k) => (k in memoryStore ? memoryStore[k] : null),
+        setItem: (k, v) => { memoryStore[k] = String(v); },
+        removeItem: (k) => { delete memoryStore[k]; }
+      };
+    }
+  }
+  const storage = safeLocalStorage();
+
   async function apiCall(action, payload = {}) {
-    const loginId = localStorage.getItem('fs_login_id');
-    const password = localStorage.getItem('fs_login_password');
+    const loginId = storage.getItem('fs_login_id');
+    const password = storage.getItem('fs_login_password');
     payload.loginId = loginId;
     payload.password = password;
-  
-    // headers を完全に削除してプリフライト(OPTIONS)を回避する
+    // Vercel(外部ドメイン)からGASへのPOST通信はCORSプリフライトが発生しやすいため、
+    // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
     const response = await fetch(GAS_URL, {
       method: "POST",
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ action: action, payload: payload })
     });
-  
     if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
     const resData = await response.json();
     if (resData.status === "error") throw new Error(resData.message);
@@ -181,12 +349,23 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
-    const savedId = localStorage.getItem('fs_login_id');
-    const savedPassword = localStorage.getItem('fs_login_password');
-    if (savedId && savedPassword) {
-      await initializeApp();
-    } else {
+    try {
+      const savedId = storage.getItem('fs_login_id');
+      const savedPassword = storage.getItem('fs_login_password');
+      if (savedId && savedPassword) {
+        await initializeApp();
+      } else {
+        document.getElementById("loginScreen").style.display = "flex";
+      }
+    } catch (e) {
+      // ここで捕捉しないと画面が真っ白のまま何も表示されなくなるため、必ずログイン画面は出す
+      console.error("初期化エラー:", e);
       document.getElementById("loginScreen").style.display = "flex";
+      const banner = document.getElementById('fatalErrorBanner');
+      if (banner) {
+        banner.style.display = 'block';
+        banner.textContent = '初期化エラー: ' + e.message;
+      }
     }
   });
 
@@ -196,14 +375,15 @@
     const pw = document.getElementById("loginPasswordInput").value.trim();
     if (!id || !pw) return Swal.fire({ icon: 'warning', title: 'IDとパスワードを入力してください。' });
 
-    localStorage.setItem('fs_login_id', id);
-    localStorage.setItem('fs_login_password', pw);
+    storage.setItem('fs_login_id', id);
+    storage.setItem('fs_login_password', pw);
     document.getElementById("loginScreen").style.display = "none";
     await initializeApp();
   }
 
   let allRecordsCache = [];  // data シート全件（アプリ起動時に1回だけ取得）
   let allLinksCache = [];    // 紐付け管理シート全件
+  let allTagsCache = [];     // タグマスタ全件
 
   async function initializeApp() {
     const loader = document.getElementById("initLoader");
@@ -214,15 +394,22 @@
       const loginData = await apiCall("login");
 
       // 権限情報を保存（S10・S12など管理者専用画面の表示可否判定に使用）
-      localStorage.setItem('fs_login_userName', loginData.loginUser);
-      localStorage.setItem('fs_login_permission', loginData.permission || "");
+      storage.setItem('fs_login_userName', loginData.loginUser);
+      storage.setItem('fs_login_permission', loginData.permission || "");
       document.getElementById("userDisplayLabel").textContent = `ログインユーザー: ${loginData.loginUser}`;
+      // 削除済みファイル管理ボタンは管理者権限を持つユーザーにのみ表示する
+      // （サーバー側でも二重チェックしているため、ここは表示制御のみの役割）
+      document.getElementById("deletedFilesBtn").style.display = (loginData.permission === "管理者") ? "flex" : "none";
 
-      // ファイル一覧・紐付け情報を取得（クライアント側キャッシュ方式。案件管理アプリと同じ方針）
+      // ファイル一覧・紐付け情報・タグマスタを取得（クライアント側キャッシュ方式。案件管理アプリと同じ方針）
       document.getElementById("loaderText").textContent = "データを読み込み中...";
-      const listData = await apiCall("loadAllRecords");
+      const [listData, tagData] = await Promise.all([
+        apiCall("loadAllRecords"),
+        apiCall("loadTagMaster")
+      ]);
       allRecordsCache = listData.records || [];
       allLinksCache = listData.links || [];
+      allTagsCache = tagData.tags || [];
 
       initFilterSelect("filterFormat", allRecordsCache, "形式ID");
       initFilterSelect("filterUseType", allRecordsCache, "用途種別ID");
@@ -240,10 +427,10 @@
         confirmButtonColor: '#ef4444',
         confirmButtonText: 'OK'
       });
-      localStorage.removeItem('fs_login_id');
-      localStorage.removeItem('fs_login_password');
-      localStorage.removeItem('fs_login_userName');
-      localStorage.removeItem('fs_login_permission');
+      storage.removeItem('fs_login_id');
+      storage.removeItem('fs_login_password');
+      storage.removeItem('fs_login_userName');
+      storage.removeItem('fs_login_permission');
       window.location.reload();
     }
   }
@@ -290,6 +477,10 @@
     const linkedFileIds = caseNo ? getFileIdsLinkedToCase(caseNo) : null;
 
     return records.filter(r => {
+      // 一覧画面にはゴミ箱・削除済みは表示しない（それぞれ専用画面で扱う。設計書3-7）
+      const status = r["レコードステータス"];
+      if (status === "ゴミ箱" || status === "削除済み") return false;
+
       if (linkedFileIds && !linkedFileIds.includes(r["ファイルID"])) return false;
       if (format && r["形式ID"] !== format) return false;
       if (useType && r["用途種別ID"] !== useType) return false;
@@ -353,7 +544,7 @@
       `;
       if (!isLocked) {
         item.style.cursor = "pointer";
-        item.onclick = () => showToast("詳細画面はPhase3以降で実装予定です");
+        item.onclick = () => openDetailModal(record);
       } else {
         item.onclick = () => showToast("OCR処理中のため編集できません");
       }
@@ -364,6 +555,383 @@
   function showToast(message) {
     Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: message, showConfirmButton: false, timer: 2500 });
   }
+
+  // =================================================================
+  // 新規登録（S03）：仮登録→OCR反映→確定保存フロー（設計書9章）
+  // =================================================================
+  let pendingLinks = []; // モーダル内で追加された紐付け先（案件No）を一時保持
+
+  window.openCreateModal = function() {
+    document.getElementById("createForm").reset();
+    pendingLinks = [];
+    renderLinkChips();
+    document.getElementById("createModal").style.display = "flex";
+  };
+  window.closeCreateModal = function() {
+    document.getElementById("createModal").style.display = "none";
+  };
+
+  document.getElementById("linkCaseNoInput")?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const value = e.target.value.trim();
+    if (value && !pendingLinks.includes(value)) {
+      pendingLinks.push(value);
+      renderLinkChips();
+    }
+    e.target.value = "";
+  });
+
+  function renderLinkChips() {
+    const area = document.getElementById("linkChipArea");
+    area.innerHTML = pendingLinks.map(caseNo => `
+      <span class="link-chip">案件No.${caseNo} <span class="remove" onclick="removeLinkChip('${caseNo}')">×</span></span>
+    `).join('');
+  }
+  window.removeLinkChip = function(caseNo) {
+    pendingLinks = pendingLinks.filter(v => v !== caseNo);
+    renderLinkChips();
+  };
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+    });
+  }
+
+  async function handleCreateSubmit(event) {
+    event.preventDefault();
+    const fileInput = document.getElementById("uploadFileInput");
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const displayName = document.getElementById("uploadDisplayName").value.trim();
+    const links = pendingLinks.map(caseNo => ({ type: "案件", id: caseNo }));
+
+    const loader = document.getElementById("initLoader");
+    loader.style.display = "flex";
+    document.getElementById("loaderText").textContent = "仮登録中...";
+
+    try {
+      // 【1段目】シートへ仮登録（軽量。base64はまだ送らない）
+      const createResult = await apiCall("createRecordSheetOnly", {
+        fData: { fileName: file.name, mimeType: file.type, displayName: displayName, links: links }
+      });
+
+      closeCreateModal();
+      showToast("仮登録が完了しました。バックグラウンド処理中...");
+      // 仮登録された状態がすぐ見えるよう、一覧を再取得して反映する
+      await refreshRecordsCache();
+      search();
+
+      // 【2段目】Drive保存＋OCR（重い処理。完了を待ってから最新化を促す）
+      document.getElementById("loaderText").textContent = "ファイルを保存し、OCRを実行中です...";
+      loader.style.display = "flex";
+      const base64 = await fileToBase64(file);
+      await apiCall("processBackgroundTasks", {
+        fData: { fileId: createResult.fileId, rowNumber: createResult.rowNumber, base64: base64, mimeType: file.type, fileName: file.name }
+      });
+
+      loader.style.display = "none";
+      const result = await Swal.fire({
+        icon: 'success',
+        title: '処理が完了しました',
+        text: '最新の内容を一覧に反映しますか？',
+        showCancelButton: true,
+        confirmButtonText: '反映する',
+        cancelButtonText: 'このまま',
+        confirmButtonColor: 'var(--primary)'
+      });
+      if (result.isConfirmed) {
+        await refreshRecordsCache();
+        search();
+      }
+
+    } catch (err) {
+      loader.style.display = "none";
+      Swal.fire({ icon: 'error', title: '登録エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  }
+
+  async function refreshRecordsCache() {
+    const [listData, tagData] = await Promise.all([apiCall("loadAllRecords"), apiCall("loadTagMaster")]);
+    allRecordsCache = listData.records || [];
+    allLinksCache = listData.links || [];
+    allTagsCache = tagData.tags || [];
+    initFilterSelect("filterFormat", allRecordsCache, "形式ID");
+    initFilterSelect("filterUseType", allRecordsCache, "用途種別ID");
+  }
+
+  // =================================================================
+  // 詳細確認・確定保存／編集（S04・S05・S06統合）
+  // =================================================================
+  window.openDetailModal = function(record) {
+    const status = record["レコードステータス"];
+    const isConfirmMode = (status === "仮登録"); // 仮登録＝確定保存フロー、通常＝編集フロー
+
+    document.getElementById("detailModalTitle").textContent = isConfirmMode ? "内容の確認・確定保存" : "ファイル編集";
+    document.getElementById("detailMode").value = isConfirmMode ? "confirm" : "update";
+    document.getElementById("detailFileId").value = record["ファイルID"];
+    document.getElementById("detailRowNumber").value = record["_rowNumber"];
+    document.getElementById("detailDisplayName").value = record["表示名"] || "";
+    document.getElementById("detailUseTypeId").value = record["用途種別ID"] || "";
+    document.getElementById("detailDescription").value = record["説明・備考"] || "";
+    document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
+    // ゴミ箱への移動は確定済みファイルのみ許可（仮登録中はレビューを完了させることを優先）
+    document.getElementById("detailDeleteBtn").style.display = isConfirmMode ? "none" : "inline-flex";
+
+    // タグのチェックボックスを、現在選択中のタグを反映して描画する
+    const currentTagIds = String(record["タグID一覧"] || "").split(",").map(s => s.trim()).filter(Boolean);
+    const tagArea = document.getElementById("detailTagCheckboxes");
+    tagArea.innerHTML = allTagsCache.length === 0
+      ? '<span style="font-size:13px; color:#94a3b8;">タグ未登録です（上部「タグ管理」から追加できます）</span>'
+      : allTagsCache.map(tag => `
+          <label style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; padding:4px 10px; border-radius:12px; font-size:13px;">
+            <input type="checkbox" value="${tag.tagId}" ${currentTagIds.includes(tag.tagId) ? "checked" : ""}> ${tag.tagName}
+          </label>
+        `).join('');
+
+    // Driveプレビュー（画像・PDF・Office文書いずれもDriveの標準プレビューiframeで表示可能）
+    const previewArea = document.getElementById("detailPreviewArea");
+    const driveFileId = record["DriveファイルID"];
+    previewArea.innerHTML = driveFileId
+      ? `<iframe src="https://drive.google.com/file/d/${driveFileId}/preview" style="width:100%; height:320px; border:1px solid #e2e8f0; border-radius:8px;" allow="autoplay"></iframe>`
+      : '<div style="color:#94a3b8; font-size:13px;">プレビューを表示できません（Drive保存前のファイルです）</div>';
+
+    const ocrText = record["OCRテキスト（全文）"];
+    const ocrStatus = record["OCRステータス"];
+    document.getElementById("detailOcrPreview").textContent = ocrText
+      ? `【OCR抽出結果】\n${ocrText}`
+      : `【OCR抽出結果】未取得（OCRステータス: ${ocrStatus || "未実施"}）`;
+
+    document.getElementById("detailModal").style.display = "flex";
+  };
+  window.closeDetailModal = function() {
+    document.getElementById("detailModal").style.display = "none";
+  };
+
+  function getCheckedTagIds() {
+    return Array.from(document.querySelectorAll("#detailTagCheckboxes input[type=checkbox]:checked")).map(el => el.value);
+  }
+
+  async function handleDetailSubmit(event) {
+    event.preventDefault();
+    const mode = document.getElementById("detailMode").value; // confirm or update
+    const action = (mode === "confirm") ? "confirmRecord" : "updateRecord";
+
+    const loader = document.getElementById("initLoader");
+    loader.style.display = "flex";
+    document.getElementById("loaderText").textContent = (mode === "confirm") ? "確定保存中..." : "更新中...";
+
+    try {
+      await apiCall(action, {
+        fData: {
+          fileId: document.getElementById("detailFileId").value,
+          rowNumber: Number(document.getElementById("detailRowNumber").value),
+          displayName: document.getElementById("detailDisplayName").value.trim(),
+          useTypeId: document.getElementById("detailUseTypeId").value.trim(),
+          tagIds: getCheckedTagIds(),
+          description: document.getElementById("detailDescription").value.trim()
+        }
+      });
+
+      loader.style.display = "none";
+      closeDetailModal();
+      showToast(mode === "confirm" ? "確定保存が完了しました。" : "更新しました。");
+      await refreshRecordsCache();
+      search();
+
+    } catch (err) {
+      loader.style.display = "none";
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  }
+
+  window.handleDeleteFromDetail = async function() {
+    const result = await Swal.fire({
+      title: 'ゴミ箱へ移動しますか？',
+      text: '30日以内であれば復元できます。',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      confirmButtonText: '移動する',
+      cancelButtonText: 'キャンセル'
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+      await apiCall("moveToTrash", {
+        fData: {
+          fileId: document.getElementById("detailFileId").value,
+          rowNumber: Number(document.getElementById("detailRowNumber").value)
+        }
+      });
+      closeDetailModal();
+      showToast("ゴミ箱へ移動しました。");
+      await refreshRecordsCache();
+      search();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
+
+  // =================================================================
+  // タグ管理（S08）
+  // =================================================================
+  window.openTagModal = function() {
+    renderTagList();
+    document.getElementById("tagModal").style.display = "flex";
+  };
+  window.closeTagModal = function() {
+    document.getElementById("tagModal").style.display = "none";
+  };
+
+  function renderTagList() {
+    const area = document.getElementById("tagListArea");
+    if (allTagsCache.length === 0) {
+      area.innerHTML = '<p style="color:#94a3b8; font-size:14px;">タグはまだ登録されていません。</p>';
+      return;
+    }
+    area.innerHTML = allTagsCache.map(tag => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid #f1f5f9;">
+        <span>${tag.tagName}<span style="color:#94a3b8; font-size:12px; margin-left:8px;">${tag.tagId}</span></span>
+        <button class="btn" style="background:#fee2e2; color:#dc2626; padding:4px 10px; font-size:12px;" onclick="handleDeleteTag('${tag.tagId}')">削除</button>
+      </div>
+    `).join('');
+  }
+
+  window.handleAddTag = async function() {
+    const input = document.getElementById("newTagNameInput");
+    const name = input.value.trim();
+    if (!name) return;
+    try {
+      await apiCall("addTag", { tagName: name });
+      input.value = "";
+      const tagData = await apiCall("loadTagMaster");
+      allTagsCache = tagData.tags || [];
+      renderTagList();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
+
+  window.handleDeleteTag = async function(tagId) {
+    try {
+      const result = await apiCall("deleteTag", { tagId: tagId, force: false });
+      if (!result.success) {
+        // 使用中の場合は確認の上、強制削除（該当ファイルのタグ一覧からも自動で外れる）
+        const confirmResult = await Swal.fire({
+          title: `このタグは${result.inUseCount}件のファイルで使用中です`,
+          text: '削除すると、該当ファイルからもこのタグが自動的に外れます。続行しますか？',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#dc2626',
+          confirmButtonText: '削除する',
+          cancelButtonText: 'キャンセル'
+        });
+        if (!confirmResult.isConfirmed) return;
+        await apiCall("deleteTag", { tagId: tagId, force: true });
+      }
+      const tagData = await apiCall("loadTagMaster");
+      allTagsCache = tagData.tags || [];
+      renderTagList();
+      await refreshRecordsCache();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
+
+  // =================================================================
+  // ゴミ箱（S07・一般ユーザー向け・30日以内）
+  // =================================================================
+  window.openTrashModal = async function() {
+    document.getElementById("trashListArea").innerHTML = "読み込み中...";
+    document.getElementById("trashModal").style.display = "flex";
+    try {
+      const data = await apiCall("loadTrashList");
+      renderTrashList(data.trashList || []);
+    } catch (err) {
+      document.getElementById("trashListArea").innerHTML = `<p style="color:#dc2626;">${err.message}</p>`;
+    }
+  };
+  window.closeTrashModal = function() {
+    document.getElementById("trashModal").style.display = "none";
+  };
+
+  function renderTrashList(trashList) {
+    const area = document.getElementById("trashListArea");
+    if (trashList.length === 0) {
+      area.innerHTML = '<p style="color:#94a3b8; font-size:14px;">ゴミ箱は空です。</p>';
+      return;
+    }
+    area.innerHTML = trashList.map(r => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid #f1f5f9;">
+        <div>
+          <div style="font-weight:bold;">${r["表示名"] || r["ファイル名"]}</div>
+          <div style="font-size:12px; color:#94a3b8;">残り${r["残り日数"]}日で自動的に完全削除されます</div>
+        </div>
+        <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" onclick="handleRestoreFromTrash('${r["ファイルID"]}', ${r["_rowNumber"]})">復元</button>
+      </div>
+    `).join('');
+  }
+
+  window.handleRestoreFromTrash = async function(fileId, rowNumber) {
+    try {
+      await apiCall("restoreFromTrash", { fData: { fileId, rowNumber } });
+      showToast("復元しました。");
+      await openTrashModal();
+      await refreshRecordsCache();
+      search();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
+
+  // =================================================================
+  // 削除済みファイル管理（S12・管理者専用）
+  // =================================================================
+  window.openDeletedFilesModal = async function() {
+    document.getElementById("deletedFilesListArea").innerHTML = "読み込み中...";
+    document.getElementById("deletedFilesModal").style.display = "flex";
+    try {
+      const data = await apiCall("loadDeletedFiles");
+      renderDeletedFilesList(data.deletedFiles || []);
+    } catch (err) {
+      document.getElementById("deletedFilesListArea").innerHTML = `<p style="color:#dc2626;">${err.message}</p>`;
+    }
+  };
+  window.closeDeletedFilesModal = function() {
+    document.getElementById("deletedFilesModal").style.display = "none";
+  };
+
+  function renderDeletedFilesList(deletedFiles) {
+    const area = document.getElementById("deletedFilesListArea");
+    if (deletedFiles.length === 0) {
+      area.innerHTML = '<p style="color:#94a3b8; font-size:14px;">削除済みファイルはありません。</p>';
+      return;
+    }
+    area.innerHTML = deletedFiles.map(r => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid #f1f5f9;">
+        <div style="font-weight:bold;">${r["表示名"] || r["ファイル名"]}</div>
+        <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" onclick="handleRestoreDeletedFile('${r["ファイルID"]}', ${r["_rowNumber"]})">復元</button>
+      </div>
+    `).join('');
+  }
+
+  window.handleRestoreDeletedFile = async function(fileId, rowNumber) {
+    try {
+      await apiCall("restoreDeletedFile", { fData: { fileId, rowNumber } });
+      showToast("復元しました。");
+      await openDeletedFilesModal();
+      await refreshRecordsCache();
+      search();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
 
   window.handleLogout = async function() {
     const result = await Swal.fire({
@@ -376,10 +944,10 @@
       cancelButtonText: 'キャンセル'
     });
     if (result.isConfirmed) {
-      localStorage.removeItem('fs_login_id');
-      localStorage.removeItem('fs_login_password');
-      localStorage.removeItem('fs_login_userName');
-      localStorage.removeItem('fs_login_permission');
+      storage.removeItem('fs_login_id');
+      storage.removeItem('fs_login_password');
+      storage.removeItem('fs_login_userName');
+      storage.removeItem('fs_login_permission');
       window.location.reload();
     }
   };
