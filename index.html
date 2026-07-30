@@ -339,7 +339,6 @@
     // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
     const response = await fetch(GAS_URL, {
       method: "POST",
-      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ action: action, payload: payload })
     });
     if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
