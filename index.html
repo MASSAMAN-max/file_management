@@ -54,6 +54,20 @@
   }
   .btn-primary { background-color: var(--primary); color: white; }
   .btn-primary:hover { background-color: var(--primary-hover); }
+  .btn-secondary { background-color: #bdc3c7; color: white; }
+
+  /* 一覧カード（案件管理アプリのresult-itemを踏襲したシンプル版） */
+  .result-item {
+    background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    margin-bottom: 14px; padding: 16px 20px; border: 1px solid #e2e8f0;
+  }
+  .result-item.is-locked { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
+  .row-meta { display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+  .badge-no { background:#e2e8f0; color:#334155; padding:3px 10px; border-radius:6px; font-size:13px; font-weight:bold; }
+  .badge-status { padding:3px 10px; border-radius:6px; font-size:12px; font-weight:bold; }
+  .badge-status.仮登録 { background:#fef3c7; color:#92400e; }
+  .badge-status.通常 { background:#dcfce7; color:#166534; }
+  .file-title { font-size:16px; font-weight:bold; color:#0f172a; }
 
   .login-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: white; }
   .login-box { width: 100%; max-width: 400px; padding: 32px; box-sizing: border-box; }
@@ -97,7 +111,7 @@
   </div>
 </div>
 
-<!-- メインアプリ画面：Phase2以降で一覧・検索・登録機能を実装 -->
+<!-- メインアプリ画面 -->
 <div id="mainApp" style="display:none; padding: 12px;">
   <div style="display: flex; align-items: center; margin: 12px 12px 8px 12px;">
     <button type="button" id="logoutBtn" class="mini-logout-btn" onclick="handleLogout()">
@@ -106,15 +120,44 @@
     <span id="userDisplayLabel" style="margin-left: auto; font-size: 13px; color: var(--text-sub); font-weight: bold; background: #e2e8f0; padding: 4px 12px; border-radius: 20px;"></span>
   </div>
 
-  <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin: 12px;">
-    <div style="font-size: 22px; font-weight: bold; color: #1e293b;">ファイル保存アプリ</div>
-    <p style="color: var(--text-sub);">ログインに成功しました。一覧・検索・登録機能はPhase2以降で実装予定です。</p>
-    <!-- 管理者のみに表示するUIの動作確認用（Phase2以降で正式なメニューに置き換える） -->
-    <div id="adminOnlyArea" style="display:none; margin-top: 16px; padding: 12px; background: #fef9c3; border-radius: 8px; font-size: 14px;">
-      管理者権限でログイン中です（マスタ管理・削除済みファイル管理の導線はPhase8・Phase6で実装予定）
+  <!-- 検索・フィルターセクション -->
+  <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 24px;">
+    <div style="font-size: 22px; font-weight: bold; color: #1e293b; margin-bottom: 16px; display:flex; align-items:center; gap:8px;">
+      <span class="material-symbols-outlined" style="color:var(--primary); font-size:34px;">folder_open</span> ファイル保存アプリ
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
+      <div style="flex: 1; min-width: 160px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">案件No</label>
+        <input type="text" id="filterCaseNo" placeholder="例：123" style="width:100%;">
+      </div>
+      <div style="flex: 1; min-width: 160px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">形式</label>
+        <select id="filterFormat" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
+      </div>
+      <div style="flex: 1; min-width: 160px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">用途種別</label>
+        <select id="filterUseType" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
+      </div>
+      <div style="flex: 2; min-width: 240px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">キーワード検索（ファイル名・OCRテキスト）</label>
+        <input type="text" id="searchValue" placeholder="文字を入力（Enterキーでも検索できます）" style="width:100%;">
+      </div>
+      <div style="display:flex; gap:8px; min-width:220px; flex:1;">
+        <button id="searchBtn" class="btn btn-primary" onclick="search()" style="flex:1; padding:13px; font-size:16px;">
+          <span class="material-symbols-outlined">search</span> 検索する
+        </button>
+        <button id="clearBtn" class="btn btn-secondary" onclick="clearSearchFilters()" style="flex:1; padding:13px; font-size:16px;">
+          <span class="material-symbols-outlined">clear</span> クリア
+        </button>
+      </div>
     </div>
   </div>
+
+  <div id="searchCount" style="margin: 0 12px 12px 12px; font-weight: bold; font-size: 16px;"></div>
+  <div id="results" style="margin: 0 12px;"></div>
 </div>
+
 
 <script>
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbxdJ05Em_f_c-KBTKFEXdcEmGgXSPDSjh0KQwlQnbqcbpvebAongHKCf7WaOp0YiGf_/exec';
@@ -124,8 +167,11 @@
     const password = localStorage.getItem('fs_login_password');
     payload.loginId = loginId;
     payload.password = password;
+    // Vercel(外部ドメイン)からGASへのPOST通信はCORSプリフライトが発生しやすいため、
+    // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
     const response = await fetch(GAS_URL, {
       method: "POST",
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ action: action, payload: payload })
     });
     if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
@@ -156,25 +202,34 @@
     await initializeApp();
   }
 
+  let allRecordsCache = [];  // data シート全件（アプリ起動時に1回だけ取得）
+  let allLinksCache = [];    // 紐付け管理シート全件
+
   async function initializeApp() {
     const loader = document.getElementById("initLoader");
     loader.style.display = "flex";
     document.getElementById("loaderText").textContent = "ログイン認証中...";
 
     try {
-      const data = await apiCall("login");
+      const loginData = await apiCall("login");
 
       // 権限情報を保存（S10・S12など管理者専用画面の表示可否判定に使用）
-      localStorage.setItem('fs_login_userName', data.loginUser);
-      localStorage.setItem('fs_login_permission', data.permission || "");
+      localStorage.setItem('fs_login_userName', loginData.loginUser);
+      localStorage.setItem('fs_login_permission', loginData.permission || "");
+      document.getElementById("userDisplayLabel").textContent = `ログインユーザー: ${loginData.loginUser}`;
 
-      document.getElementById("userDisplayLabel").textContent = `ログインユーザー: ${data.loginUser}`;
-      if (data.permission === "管理者") {
-        document.getElementById("adminOnlyArea").style.display = "block";
-      }
+      // ファイル一覧・紐付け情報を取得（クライアント側キャッシュ方式。案件管理アプリと同じ方針）
+      document.getElementById("loaderText").textContent = "データを読み込み中...";
+      const listData = await apiCall("loadAllRecords");
+      allRecordsCache = listData.records || [];
+      allLinksCache = listData.links || [];
+
+      initFilterSelect("filterFormat", allRecordsCache, "形式ID");
+      initFilterSelect("filterUseType", allRecordsCache, "用途種別ID");
 
       loader.style.display = "none";
       document.getElementById("mainApp").style.display = "block";
+      search(); // 初期表示（絞り込みなしで全件表示）
 
     } catch (err) {
       loader.style.display = "none";
@@ -191,6 +246,123 @@
       localStorage.removeItem('fs_login_permission');
       window.location.reload();
     }
+  }
+
+  // フィルタ用ドロップダウンを、取得済みレコードの値から重複なく生成する
+  // （マスタシートからの一覧取得はPhase5で実装。それまでは実データの値から生成する簡易対応）
+  function initFilterSelect(elementId, records, fieldName) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const values = [...new Set(records.map(r => r[fieldName]).filter(v => v))].sort();
+    el.innerHTML = '<option value="">すべて</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
+  }
+
+  // ===== 検索用テキスト正規化（案件管理アプリと同一ロジック） =====
+  const KANA_TO_HANKAKU_MAP = {
+    'ガ':'ｶﾞ','ギ':'ｷﾞ','グ':'ｸﾞ','ゲ':'ｹﾞ','ゴ':'ｺﾞ','ザ':'ｻﾞ','ジ':'ｼﾞ','ズ':'ｽﾞ','ゼ':'ｾﾞ','ゾ':'ｿﾞ',
+    'ダ':'ﾀﾞ','ヂ':'ﾁﾞ','ヅ':'ﾂﾞ','デ':'ﾃﾞ','ド':'ﾄﾞ','バ':'ﾊﾞ','ビ':'ﾋﾞ','ブ':'ﾌﾞ','ベ':'ﾍﾞ','ボ':'ﾎﾞ',
+    'パ':'ﾊﾟ','ピ':'ﾋﾟ','プ':'ﾌﾟ','ペ':'ﾍﾟ','ポ':'ﾎﾟ','ヴ':'ｳﾞ',
+    'ア':'ｱ','イ':'ｲ','ウ':'ｳ','エ':'ｴ','オ':'ｵ','カ':'ｶ','キ':'ｷ','ク':'ｸ','ケ':'ｹ','コ':'ｺ',
+    'サ':'ｻ','シ':'ｼ','ス':'ｽ','セ':'ｾ','ソ':'ｿ','タ':'ﾀ','チ':'ﾁ','ツ':'ﾂ','テ':'ﾃ','ト':'ﾄ',
+    'ナ':'ﾅ','ニ':'ﾆ','ヌ':'ﾇ','ネ':'ﾈ','ノ':'ﾉ','ハ':'ﾊ','ヒ':'ﾋ','フ':'ﾌ','ヘ':'ﾍ','ホ':'ﾎ',
+    'マ':'ﾏ','ミ':'ﾐ','ム':'ﾑ','メ':'ﾒ','モ':'ﾓ','ヤ':'ﾔ','ユ':'ﾕ','ヨ':'ﾖ',
+    'ラ':'ﾗ','リ':'ﾘ','ル':'ﾙ','レ':'ﾚ','ロ':'ﾛ','ワ':'ﾜ','ヲ':'ｦ','ン':'ﾝ',
+    'ァ':'ｧ','ィ':'ｨ','ゥ':'ｩ','ェ':'ｪ','ォ':'ｫ','ッ':'ｯ','ャ':'ｬ','ュ':'ｭ','ョ':'ｮ','ー':'ｰ'
+  };
+  const KANA_TO_HANKAKU_REGEX = new RegExp(Object.keys(KANA_TO_HANKAKU_MAP).join('|'), 'g');
+  function normalizeText(t) {
+    if (!t) return "";
+    let text = String(t).replace(KANA_TO_HANKAKU_REGEX, m => KANA_TO_HANKAKU_MAP[m]);
+    text = text.replace(/[！-～]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+    return text.trim().toLowerCase();
+  }
+
+  // 案件Noで紐付いているファイルID一覧を、紐付け管理シートから取得する
+  // （紐付け先種別＝案件 のレコードのみを対象とする。設計書3-4参照）
+  function getFileIdsLinkedToCase(caseNo) {
+    return allLinksCache
+      .filter(link => link["紐付け先種別"] === "案件" && String(link["紐付け先ID"]).trim() === String(caseNo).trim())
+      .map(link => link["ファイルID"]);
+  }
+
+  function filterRecordsClientSide(records, { caseNo, keyword, format, useType }) {
+    const nKeyword = normalizeText(keyword);
+    const linkedFileIds = caseNo ? getFileIdsLinkedToCase(caseNo) : null;
+
+    return records.filter(r => {
+      if (linkedFileIds && !linkedFileIds.includes(r["ファイルID"])) return false;
+      if (format && r["形式ID"] !== format) return false;
+      if (useType && r["用途種別ID"] !== useType) return false;
+      if (nKeyword) {
+        const fullText = normalizeText(String(r["表示名"] || "") + String(r["ファイル名"] || "") + String(r["OCRテキスト（全文）"] || ""));
+        if (!fullText.includes(nKeyword)) return false;
+      }
+      return true;
+    });
+  }
+
+  window.search = function() {
+    const caseNo = document.getElementById("filterCaseNo").value.trim();
+    const keyword = document.getElementById("searchValue").value;
+    const format = document.getElementById("filterFormat").value;
+    const useType = document.getElementById("filterUseType").value;
+
+    const filtered = filterRecordsClientSide(allRecordsCache, { caseNo, keyword, format, useType });
+    displayResults(filtered);
+  };
+
+  window.clearSearchFilters = function() {
+    document.getElementById("filterCaseNo").value = "";
+    document.getElementById("searchValue").value = "";
+    document.getElementById("filterFormat").value = "";
+    document.getElementById("filterUseType").value = "";
+    search();
+  };
+
+  document.getElementById("searchValue")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") search();
+  });
+
+  function displayResults(records) {
+    const container = document.getElementById("results");
+    const countDiv = document.getElementById("searchCount");
+    container.innerHTML = "";
+
+    if (!records || records.length === 0) {
+      countDiv.innerHTML = "条件に一致するファイルは見つかりませんでした。";
+      return;
+    }
+    countDiv.innerHTML = `<span style="color:var(--primary); font-size:18px;">${records.length}</span> 件のファイルを表示中`;
+
+    records.forEach(record => {
+      const status = record["レコードステータス"] || "通常";
+      const ocrStatus = record["OCRステータス"] || "";
+      // 仮登録×OCR処理中の間は編集不可（設計書9-2）。一覧上はロック表示にしてクリックを無効化する
+      const isLocked = (status === "仮登録" && ocrStatus === "処理中");
+
+      const item = document.createElement("div");
+      item.className = "result-item" + (isLocked ? " is-locked" : "");
+      item.innerHTML = `
+        <div class="row-meta">
+          <span class="badge-no">${record["ファイルID"] || ""}</span>
+          <span class="badge-status ${status}">${status === "仮登録" ? (isLocked ? "OCR処理中" : "確認待ち") : "確定済み"}</span>
+          ${record["形式ID"] ? `<span style="font-size:12px; color:#64748b;">形式: ${record["形式ID"]}</span>` : ""}
+          ${record["用途種別ID"] ? `<span style="font-size:12px; color:#64748b;">用途: ${record["用途種別ID"]}</span>` : ""}
+        </div>
+        <div class="file-title">${record["表示名"] || record["ファイル名"] || "（無題）"}</div>
+      `;
+      if (!isLocked) {
+        item.style.cursor = "pointer";
+        item.onclick = () => showToast("詳細画面はPhase3以降で実装予定です");
+      } else {
+        item.onclick = () => showToast("OCR処理中のため編集できません");
+      }
+      container.appendChild(item);
+    });
+  }
+
+  function showToast(message) {
+    Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: message, showConfirmButton: false, timer: 2500 });
   }
 
   window.handleLogout = async function() {
