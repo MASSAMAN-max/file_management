@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="manifest" href="/file-storage-app.json">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-512.png">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<base target="_top">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<style>
+  /* ===== 共通デザイントークン（案件管理アプリと統一） ===== */
+  :root {
+    --primary: #4a90e2;
+    --primary-hover: #357abd;
+    --success: #2ecc71;
+    --success-hover: #27ae60;
+    --text-main: #222222;
+    --text-sub: #555555;
+    --border: #cccccc;
+    --bg-light: #f4f6f9;
+  }
+
+  body {
+    font-family: Meiryo, "Meiryo UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    margin: 0;
+    background-color: var(--bg-light);
+    color: var(--text-main);
+    font-size: 16px;
+    line-height: 1.6;
+    font-weight: 500;
+  }
+
+  input, select, textarea {
+    font-family: inherit;
+    font-size: 16px !important;
+    padding: 12px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    box-sizing: border-box;
+    background: white;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--primary); outline: none; background: #fdfdfd; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-weight: bold; cursor: pointer; border: none; border-radius: 8px;
+    padding: 12px 24px; font-size: 16px; transition: all 0.2s;
+  }
+  .btn-primary { background-color: var(--primary); color: white; }
+  .btn-primary:hover { background-color: var(--primary-hover); }
+
+  .login-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: white; }
+  .login-box { width: 100%; max-width: 400px; padding: 32px; box-sizing: border-box; }
+
+  .mini-logout-btn {
+    width: fit-content; display: flex; align-items: center; gap: 4px;
+    padding: 6px 10px; font-size: 12px; font-weight: bold;
+    background-color: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1;
+    border-radius: 6px; cursor: pointer; transition: all 0.2s ease;
+  }
+  .mini-logout-btn:hover { background-color: #fee2e2; color: #ef4444; border-color: #fca5a5; }
+
+  #initLoader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background: #ffffff; z-index: 9999; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 120px; }
+  @keyframes pulseText { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<!-- ログイン画面 -->
+<div id="loginScreen" class="login-container" style="display:none;">
+  <div class="login-box">
+    <h2 style="text-align:center; margin-bottom:32px;">ファイル保存アプリ ログイン</h2>
+    <form id="loginForm" onsubmit="handleLoginSubmit(event)">
+      <div style="margin-bottom:20px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold;">ログインID</label>
+        <input type="text" id="loginIdInput" style="width:100%;" placeholder="IDを入力してください" autocomplete="username" required>
+      </div>
+      <div style="margin-bottom:32px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold;">パスワード</label>
+        <input type="password" id="loginPasswordInput" style="width:100%; box-sizing: border-box;" placeholder="パスワードを入力してください" autocomplete="current-password" required>
+      </div>
+      <button type="submit" id="loginBtn" class="btn btn-primary" style="width:100%; padding:14px; font-size:18px;">ログイン</button>
+    </form>
+  </div>
+</div>
+
+<!-- 初期ローディング画面 -->
+<div id="initLoader">
+  <div style="width: 100%; max-width: 350px; text-align: center;">
+    <p id="loaderText" style="margin: 0; color: #475569; font-size: 16px; font-weight: bold; animation: pulseText 2s ease-in-out infinite;">読み込み中...</p>
+  </div>
+</div>
+
+<!-- メインアプリ画面：Phase2以降で一覧・検索・登録機能を実装 -->
+<div id="mainApp" style="display:none; padding: 12px;">
+  <div style="display: flex; align-items: center; margin: 12px 12px 8px 12px;">
+    <button type="button" id="logoutBtn" class="mini-logout-btn" onclick="handleLogout()">
+      <span class="material-symbols-outlined">logout</span><span>ログアウト</span>
+    </button>
+    <span id="userDisplayLabel" style="margin-left: auto; font-size: 13px; color: var(--text-sub); font-weight: bold; background: #e2e8f0; padding: 4px 12px; border-radius: 20px;"></span>
+  </div>
+
+  <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin: 12px;">
+    <div style="font-size: 22px; font-weight: bold; color: #1e293b;">ファイル保存アプリ</div>
+    <p style="color: var(--text-sub);">ログインに成功しました。一覧・検索・登録機能はPhase2以降で実装予定です。</p>
+    <!-- 管理者のみに表示するUIの動作確認用（Phase2以降で正式なメニューに置き換える） -->
+    <div id="adminOnlyArea" style="display:none; margin-top: 16px; padding: 12px; background: #fef9c3; border-radius: 8px; font-size: 14px;">
+      管理者権限でログイン中です（マスタ管理・削除済みファイル管理の導線はPhase8・Phase6で実装予定）
+    </div>
+  </div>
+</div>
+
+<script>
+  const GAS_URL = 'ここにデプロイ後のWebアプリURLを設定';
+
+  async function apiCall(action, payload = {}) {
+    const loginId = localStorage.getItem('fs_login_id');
+    const password = localStorage.getItem('fs_login_password');
+    payload.loginId = loginId;
+    payload.password = password;
+    const response = await fetch(GAS_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: action, payload: payload })
+    });
+    if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
+    const resData = await response.json();
+    if (resData.status === "error") throw new Error(resData.message);
+    return resData.data;
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    const savedId = localStorage.getItem('fs_login_id');
+    const savedPassword = localStorage.getItem('fs_login_password');
+    if (savedId && savedPassword) {
+      await initializeApp();
+    } else {
+      document.getElementById("loginScreen").style.display = "flex";
+    }
+  });
+
+  async function handleLoginSubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById("loginIdInput").value.trim();
+    const pw = document.getElementById("loginPasswordInput").value.trim();
+    if (!id || !pw) return Swal.fire({ icon: 'warning', title: 'IDとパスワードを入力してください。' });
+
+    localStorage.setItem('fs_login_id', id);
+    localStorage.setItem('fs_login_password', pw);
+    document.getElementById("loginScreen").style.display = "none";
+    await initializeApp();
+  }
+
+  async function initializeApp() {
+    const loader = document.getElementById("initLoader");
+    loader.style.display = "flex";
+    document.getElementById("loaderText").textContent = "ログイン認証中...";
+
+    try {
+      const data = await apiCall("login");
+
+      // 権限情報を保存（S10・S12など管理者専用画面の表示可否判定に使用）
+      localStorage.setItem('fs_login_userName', data.loginUser);
+      localStorage.setItem('fs_login_permission', data.permission || "");
+
+      document.getElementById("userDisplayLabel").textContent = `ログインユーザー: ${data.loginUser}`;
+      if (data.permission === "管理者") {
+        document.getElementById("adminOnlyArea").style.display = "block";
+      }
+
+      loader.style.display = "none";
+      document.getElementById("mainApp").style.display = "block";
+
+    } catch (err) {
+      loader.style.display = "none";
+      await Swal.fire({
+        title: 'ログインに失敗しました。',
+        text: err.message,
+        icon: 'error',
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'OK'
+      });
+      localStorage.removeItem('fs_login_id');
+      localStorage.removeItem('fs_login_password');
+      localStorage.removeItem('fs_login_userName');
+      localStorage.removeItem('fs_login_permission');
+      window.location.reload();
+    }
+  }
+
+  window.handleLogout = async function() {
+    const result = await Swal.fire({
+      title: 'ログアウトしますか？',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'ログアウト',
+      cancelButtonText: 'キャンセル'
+    });
+    if (result.isConfirmed) {
+      localStorage.removeItem('fs_login_id');
+      localStorage.removeItem('fs_login_password');
+      localStorage.removeItem('fs_login_userName');
+      localStorage.removeItem('fs_login_permission');
+      window.location.reload();
+    }
+  };
+</script>
+</body>
+</html>
