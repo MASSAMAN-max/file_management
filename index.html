@@ -167,13 +167,13 @@
     const password = localStorage.getItem('fs_login_password');
     payload.loginId = loginId;
     payload.password = password;
-    // Vercel(外部ドメイン)からGASへのPOST通信はCORSプリフライトが発生しやすいため、
-    // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
+  
+    // headers を完全に削除してプリフライト(OPTIONS)を回避する
     const response = await fetch(GAS_URL, {
       method: "POST",
-      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ action: action, payload: payload })
     });
+  
     if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
     const resData = await response.json();
     if (resData.status === "error") throw new Error(resData.message);
