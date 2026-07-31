@@ -222,6 +222,12 @@
         </div>
         <div id="linkChipArea" style="margin-top:6px;"></div>
       </div>
+      <div class="form-group">
+        <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
+          <input type="checkbox" id="uploadUseOcr" checked style="width:auto;">
+          OCRでテキストを自動抽出する（チェックを外すと処理をスキップします）
+        </label>
+      </div>
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:24px;">
         <button type="button" class="btn btn-secondary" onclick="closeCreateModal()">閉じる</button>
         <button type="submit" class="btn btn-success">登録する</button>
@@ -249,12 +255,40 @@
         <input type="text" id="detailDisplayName" required>
       </div>
       <div class="form-group">
-        <label>用途種別ID（マスタ画面はPhase8で実装予定のため、現時点は手入力）</label>
-        <input type="text" id="detailUseTypeId">
+        <label>用途種別</label>
+        <select id="detailUseTypeId"><option value="">未設定</option></select>
       </div>
       <div class="form-group">
         <label>タグ</label>
         <div id="detailTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div class="form-group" style="flex:1;">
+          <label>取引先</label>
+          <input type="text" id="detailClient" placeholder="例：〇〇株式会社">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>発行／受領</label>
+          <select id="detailIssuedOrReceived">
+            <option value="">未設定</option>
+            <option value="発行">発行</option>
+            <option value="受領">受領</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>適格事業者登録番号</label>
+        <input type="text" id="detailInvoiceRegistrationNumber" placeholder="例：T1234567890123（Tから始まる13桁）">
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div class="form-group" style="flex:1;">
+          <label>金額</label>
+          <input type="number" id="detailAmount" placeholder="例：50000">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>取引日</label>
+          <input type="date" id="detailTransactionDate">
+        </div>
       </div>
       <div class="form-group">
         <label>説明・備考</label>
@@ -362,7 +396,7 @@
     // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
     const response = await fetch(CONFIG.GAS_URL, {
       method: "POST",
-      //headers: { "Content-Type": "text/plain" },
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ action: action, payload: payload })
     });
     if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
@@ -569,6 +603,7 @@
           ${record["用途種別ID"] ? `<span style="font-size:12px; color:#64748b;">用途: ${record["用途種別ID"]}</span>` : ""}
         </div>
         <div class="file-title">${record["表示名"] || record["ファイル名"] || "（無題）"}</div>
+        ${(record["取引先"] || record["金額"]) ? `<div style="font-size:12px; color:#64748b; margin-top:2px;">${record["取引先"] || ""}${record["金額"] ? ` ／ ¥${Number(record["金額"]).toLocaleString()}` : ""}</div>` : ""}
       `;
       if (!isLocked) {
         item.style.cursor = "pointer";
@@ -684,6 +719,7 @@
     if (!file) return;
 
     const displayName = document.getElementById("uploadDisplayName").value.trim();
+    const useOcr = document.getElementById("uploadUseOcr").checked;
     const links = pendingLinks.map(caseNo => ({ type: "案件", id: caseNo }));
 
     const loader = document.getElementById("initLoader");
@@ -703,11 +739,14 @@
       search();
 
       // 【2段目】Drive保存＋OCR（重い処理。完了を待ってから最新化を促す）
-      document.getElementById("loaderText").textContent = "ファイルを保存し、OCRを実行中です...";
+      document.getElementById("loaderText").textContent = useOcr ? "ファイルを保存し、OCRを実行中です..." : "ファイルを保存中です...";
       loader.style.display = "flex";
       const base64 = await fileToBase64(file);
       await apiCall("processBackgroundTasks", {
-        fData: { fileId: createResult.fileId, rowNumber: createResult.rowNumber, base64: base64, mimeType: file.type, fileName: file.name }
+        fData: {
+          fileId: createResult.fileId, rowNumber: createResult.rowNumber,
+          base64: base64, mimeType: file.type, fileName: file.name, useOcr: useOcr
+        }
       });
 
       loader.style.display = "none";
@@ -755,11 +794,21 @@
     document.getElementById("detailFileId").value = record["ファイルID"];
     document.getElementById("detailRowNumber").value = record["_rowNumber"];
     document.getElementById("detailDisplayName").value = record["表示名"] || "";
-    document.getElementById("detailUseTypeId").value = record["用途種別ID"] || "";
     document.getElementById("detailDescription").value = record["説明・備考"] || "";
+    document.getElementById("detailClient").value = record["取引先"] || "";
+    document.getElementById("detailIssuedOrReceived").value = record["発行受領区分"] || "";
+    document.getElementById("detailInvoiceRegistrationNumber").value = record["適格事業者登録番号"] || "";
+    document.getElementById("detailAmount").value = record["金額"] || "";
+    document.getElementById("detailTransactionDate").value = record["取引日"] || "";
     document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
     // ゴミ箱への移動は確定済みファイルのみ許可（仮登録中はレビューを完了させることを優先）
     document.getElementById("detailDeleteBtn").style.display = isConfirmMode ? "none" : "inline-flex";
+
+    // 用途種別セレクトをマスタから動的生成する
+    const useTypeSelect = document.getElementById("detailUseTypeId");
+    useTypeSelect.innerHTML = '<option value="">未設定</option>' +
+      allUseTypesCache.map(ut => `<option value="${ut.useTypeId}">${ut.useTypeName}</option>`).join('');
+    useTypeSelect.value = record["用途種別ID"] || "";
 
     // タグのチェックボックスを、現在選択中のタグを反映して描画する
     const currentTagIds = String(record["タグID一覧"] || "").split(",").map(s => s.trim()).filter(Boolean);
@@ -812,6 +861,11 @@
           displayName: document.getElementById("detailDisplayName").value.trim(),
           useTypeId: document.getElementById("detailUseTypeId").value.trim(),
           tagIds: getCheckedTagIds(),
+          client: document.getElementById("detailClient").value.trim(),
+          issuedOrReceived: document.getElementById("detailIssuedOrReceived").value,
+          invoiceRegistrationNumber: document.getElementById("detailInvoiceRegistrationNumber").value.trim(),
+          amount: document.getElementById("detailAmount").value.trim(),
+          transactionDate: document.getElementById("detailTransactionDate").value,
           description: document.getElementById("detailDescription").value.trim()
         }
       });
