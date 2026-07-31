@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- 環境依存パラメータ（config.js）はメイン処理より前に読み込む -->
+<script src="config.js"></script>
 
 <style>
   /* ===== 共通デザイントークン（案件管理アプリと統一） ===== */
@@ -141,7 +143,7 @@
       <span class="material-symbols-outlined">logout</span><span>ログアウト</span>
     </button>
     <button type="button" class="mini-logout-btn" onclick="openTagModal()">
-      <span class="material-symbols-outlined">sell</span><span>タグ管理</span>
+      <span class="material-symbols-outlined">sell</span><span>マスタ管理</span>
     </button>
     <button type="button" class="mini-logout-btn" onclick="openTrashModal()">
       <span class="material-symbols-outlined">delete</span><span>ゴミ箱</span>
@@ -160,6 +162,9 @@
       </span>
       <button class="btn btn-primary" onclick="openCreateModal()">
         <span class="material-symbols-outlined">add_circle</span> 新規登録
+      </button>
+      <button class="btn" style="background:#f1f5f9; color:#334155;" onclick="handleZipDownload()">
+        <span class="material-symbols-outlined">download</span> 選択したファイルをZIPダウンロード
       </button>
     </div>
 
@@ -268,15 +273,28 @@
   </div>
 </div>
 
-<!-- タグ管理モーダル（S08） -->
+<!-- マスタ管理モーダル（S08・S10統合：タグ／用途種別） -->
 <div id="tagModal" class="modal-overlay" style="display:none;">
   <div class="modal-content">
-    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;">タグ管理</h2>
-    <div style="display:flex; gap:8px; margin-bottom:16px;">
+    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;">マスタ管理</h2>
+
+    <h3 style="font-size:15px; color:#334155;">タグ</h3>
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
       <input type="text" id="newTagNameInput" placeholder="新規タグ名を入力">
       <button class="btn btn-primary" onclick="handleAddTag()">追加</button>
     </div>
     <div id="tagListArea"></div>
+
+    <h3 style="font-size:15px; color:#334155; margin-top:24px;">用途種別（見積書・請求書など）</h3>
+    <div style="display:flex; gap:8px; margin-bottom:6px;">
+      <input type="text" id="newUseTypeNameInput" placeholder="用途種別名（例：見積書）" style="flex:1;">
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <input type="text" id="newUseTypeKeywordsInput" placeholder="自動判定用キーワード（カンマ区切り・任意）" style="flex:1;">
+      <button class="btn btn-primary" onclick="handleAddUseType()">追加</button>
+    </div>
+    <div id="useTypeListArea"></div>
+
     <div style="display:flex; justify-content:flex-end; margin-top:20px;">
       <button class="btn btn-secondary" onclick="closeTagModal()">閉じる</button>
     </div>
@@ -307,7 +325,12 @@
 
 
 <script>
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbxdJ05Em_f_c-KBTKFEXdcEmGgXSPDSjh0KQwlQnbqcbpvebAongHKCf7WaOp0YiGf_/exec';
+  // GAS_URLは config.js の CONFIG.GAS_URL を参照する（環境依存パラメータの一元管理）
+  if (typeof CONFIG === 'undefined' || !CONFIG.GAS_URL) {
+    document.getElementById('fatalErrorBanner').style.display = 'block';
+    document.getElementById('fatalErrorBanner').textContent =
+      'config.js が読み込まれていないか、CONFIG.GAS_URL が未設定です。config.example.js を config.js としてコピーし、値を設定してください。';
+  }
 
   // GASのHtmlServiceはサンドボックス化されたiframe内でアプリを配信するため、
   // ブラウザや設定によっては localStorage へのアクセスがブロックされ SecurityError が
@@ -337,8 +360,9 @@
     payload.password = password;
     // Vercel(外部ドメイン)からGASへのPOST通信はCORSプリフライトが発生しやすいため、
     // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
-    const response = await fetch(GAS_URL, {
+    const response = await fetch(CONFIG.GAS_URL, {
       method: "POST",
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ action: action, payload: payload })
     });
     if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
@@ -383,6 +407,7 @@
   let allRecordsCache = [];  // data シート全件（アプリ起動時に1回だけ取得）
   let allLinksCache = [];    // 紐付け管理シート全件
   let allTagsCache = [];     // タグマスタ全件
+  let allUseTypesCache = []; // 用途種別マスタ全件
 
   async function initializeApp() {
     const loader = document.getElementById("initLoader");
@@ -402,13 +427,15 @@
 
       // ファイル一覧・紐付け情報・タグマスタを取得（クライアント側キャッシュ方式。案件管理アプリと同じ方針）
       document.getElementById("loaderText").textContent = "データを読み込み中...";
-      const [listData, tagData] = await Promise.all([
+      const [listData, tagData, useTypeData] = await Promise.all([
         apiCall("loadAllRecords"),
-        apiCall("loadTagMaster")
+        apiCall("loadTagMaster"),
+        apiCall("loadUseTypeMaster")
       ]);
       allRecordsCache = listData.records || [];
       allLinksCache = listData.links || [];
       allTagsCache = tagData.tags || [];
+      allUseTypesCache = useTypeData.useTypes || [];
 
       initFilterSelect("filterFormat", allRecordsCache, "形式ID");
       initFilterSelect("filterUseType", allRecordsCache, "用途種別ID");
@@ -532,8 +559,10 @@
 
       const item = document.createElement("div");
       item.className = "result-item" + (isLocked ? " is-locked" : "");
+      const hasDriveFile = !!record["DriveファイルID"]; // Drive保存前（仮登録中）はダウンロード対象外
       item.innerHTML = `
         <div class="row-meta">
+          ${hasDriveFile ? `<input type="checkbox" class="zip-select-checkbox" data-file-id="${record["ファイルID"]}" onclick="event.stopPropagation()">` : ""}
           <span class="badge-no">${record["ファイルID"] || ""}</span>
           <span class="badge-status ${status}">${status === "仮登録" ? (isLocked ? "OCR処理中" : "確認待ち") : "確定済み"}</span>
           ${record["形式ID"] ? `<span style="font-size:12px; color:#64748b;">形式: ${record["形式ID"]}</span>` : ""}
@@ -550,6 +579,53 @@
       container.appendChild(item);
     });
   }
+
+  // =================================================================
+  // 一括ダウンロード（ZIP・S11）
+  // =================================================================
+  window.handleZipDownload = async function() {
+    const checkedBoxes = Array.from(document.querySelectorAll(".zip-select-checkbox:checked"));
+    if (checkedBoxes.length === 0) {
+      return showToast("ダウンロードするファイルにチェックを入れてください");
+    }
+    const fileIds = checkedBoxes.map(el => el.dataset.fileId);
+
+    const result = await Swal.fire({
+      title: `${fileIds.length}件のファイルをZIPでダウンロードします`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'ダウンロード',
+      cancelButtonText: 'キャンセル'
+    });
+    if (!result.isConfirmed) return;
+
+    const loader = document.getElementById("initLoader");
+    loader.style.display = "flex";
+    document.getElementById("loaderText").textContent = "ZIPを作成中...";
+
+    try {
+      const data = await apiCall("createZipDownload", { fileIds });
+      // base64をBlobに変換し、ブラウザのダウンロードとして保存する
+      const byteChars = atob(data.base64);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNumbers)], { type: "application/zip" });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = data.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      loader.style.display = "none";
+    } catch (err) {
+      loader.style.display = "none";
+      Swal.fire({ icon: 'error', title: 'ダウンロードエラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
 
   function showToast(message) {
     Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: message, showConfirmButton: false, timer: 2500 });
@@ -656,10 +732,13 @@
   }
 
   async function refreshRecordsCache() {
-    const [listData, tagData] = await Promise.all([apiCall("loadAllRecords"), apiCall("loadTagMaster")]);
+    const [listData, tagData, useTypeData] = await Promise.all([
+      apiCall("loadAllRecords"), apiCall("loadTagMaster"), apiCall("loadUseTypeMaster")
+    ]);
     allRecordsCache = listData.records || [];
     allLinksCache = listData.links || [];
     allTagsCache = tagData.tags || [];
+    allUseTypesCache = useTypeData.useTypes || [];
     initFilterSelect("filterFormat", allRecordsCache, "形式ID");
     initFilterSelect("filterUseType", allRecordsCache, "用途種別ID");
   }
@@ -782,6 +861,7 @@
   // =================================================================
   window.openTagModal = function() {
     renderTagList();
+    renderUseTypeList();
     document.getElementById("tagModal").style.display = "flex";
   };
   window.closeTagModal = function() {
@@ -837,6 +917,65 @@
       const tagData = await apiCall("loadTagMaster");
       allTagsCache = tagData.tags || [];
       renderTagList();
+      await refreshRecordsCache();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
+
+  // =================================================================
+  // 用途種別マスタ管理（S10の一部）
+  // =================================================================
+  function renderUseTypeList() {
+    const area = document.getElementById("useTypeListArea");
+    if (allUseTypesCache.length === 0) {
+      area.innerHTML = '<p style="color:#94a3b8; font-size:14px;">用途種別はまだ登録されていません。</p>';
+      return;
+    }
+    area.innerHTML = allUseTypesCache.map(ut => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid #f1f5f9;">
+        <span>${ut.useTypeName}<span style="color:#94a3b8; font-size:12px; margin-left:8px;">${ut.useTypeId}${ut.keywords ? " / キーワード: " + ut.keywords : ""}</span></span>
+        <button class="btn" style="background:#fee2e2; color:#dc2626; padding:4px 10px; font-size:12px;" onclick="handleDeleteUseType('${ut.useTypeId}')">削除</button>
+      </div>
+    `).join('');
+  }
+
+  window.handleAddUseType = async function() {
+    const nameInput = document.getElementById("newUseTypeNameInput");
+    const keywordInput = document.getElementById("newUseTypeKeywordsInput");
+    const name = nameInput.value.trim();
+    if (!name) return;
+    try {
+      await apiCall("addUseType", { useTypeName: name, keywords: keywordInput.value.trim() });
+      nameInput.value = "";
+      keywordInput.value = "";
+      const data = await apiCall("loadUseTypeMaster");
+      allUseTypesCache = data.useTypes || [];
+      renderUseTypeList();
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
+
+  window.handleDeleteUseType = async function(useTypeId) {
+    try {
+      const result = await apiCall("deleteUseType", { useTypeId: useTypeId, force: false });
+      if (!result.success) {
+        const confirmResult = await Swal.fire({
+          title: `この用途種別は${result.inUseCount}件のファイルで使用中です`,
+          text: '削除すると、該当ファイルの用途種別は未設定に戻ります。続行しますか？',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#dc2626',
+          confirmButtonText: '削除する',
+          cancelButtonText: 'キャンセル'
+        });
+        if (!confirmResult.isConfirmed) return;
+        await apiCall("deleteUseType", { useTypeId: useTypeId, force: true });
+      }
+      const data = await apiCall("loadUseTypeMaster");
+      allUseTypesCache = data.useTypes || [];
+      renderUseTypeList();
       await refreshRecordsCache();
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
