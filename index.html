@@ -70,6 +70,8 @@
   .badge-status.仮登録 { background:#fef3c7; color:#92400e; }
   .badge-status.通常 { background:#dcfce7; color:#166534; }
   .file-title { font-size:16px; font-weight:bold; color:#0f172a; }
+  .file-badge { display:inline-block; padding:3px 10px; margin:2px 4px 0 0; border-radius:6px; font-size:12px;
+    font-weight:bold; background:#e3f2fd; color:#0d47a1; border:1px solid #90caf9; }
 
   /* モーダル（案件管理アプリと共通デザイン） */
   .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6);
@@ -87,6 +89,24 @@
   .link-chip { display:inline-flex; align-items:center; gap:6px; background:#e0f2fe; color:#0369a1;
     padding:4px 10px; border-radius:14px; font-size:13px; margin:2px; }
   .link-chip .remove { cursor:pointer; font-weight:bold; }
+
+  /* トグルスイッチ（OCR実行有無など、オン/オフ選択の見た目を今風にするため） */
+  .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #cbd5e1; border-radius: 24px; transition: 0.2s; }
+  .toggle-slider::before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+    background-color: white; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+  .toggle-switch input:checked + .toggle-slider { background-color: var(--success); }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+  /* 選択ファイル一括操作のプルダウンメニュー */
+  .dropdown-wrapper { position: relative; }
+  .dropdown-menu { position: absolute; top: calc(100% + 4px); left: 0; background: white; border: 1px solid #e2e8f0;
+    border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,0.12); min-width: 200px; z-index: 100; overflow: hidden; }
+  .dropdown-item { padding: 12px 16px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex;
+    align-items: center; gap: 8px; transition: background 0.15s; }
+  .dropdown-item:hover { background: #f1f5f9; }
 
   .login-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: white; }
   .login-box { width: 100%; max-width: 400px; padding: 32px; box-sizing: border-box; }
@@ -169,9 +189,20 @@
       <button class="btn btn-primary" onclick="openCreateModal()">
         <span class="material-symbols-outlined">add_circle</span> 新規登録
       </button>
-      <button class="btn" style="background:#f1f5f9; color:#334155;" onclick="handleZipDownload()">
-        <span class="material-symbols-outlined">download</span> 選択したファイルをZIPダウンロード
-      </button>
+      <div class="dropdown-wrapper" id="bulkActionDropdownWrapper">
+        <button class="btn" style="background:#f1f5f9; color:#334155;" onclick="toggleBulkActionMenu()">
+          <span class="material-symbols-outlined">checklist</span> 選択したファイルの操作
+          <span class="material-symbols-outlined" style="font-size:18px;">expand_more</span>
+        </button>
+        <div id="bulkActionMenu" class="dropdown-menu" style="display:none;">
+          <div class="dropdown-item" onclick="handleZipDownload()">
+            <span class="material-symbols-outlined">download</span> ZIPダウンロード
+          </div>
+          <div class="dropdown-item" style="color:#dc2626;" onclick="handleBulkMoveToTrash()">
+            <span class="material-symbols-outlined">delete</span> ゴミ箱へ移動
+          </div>
+        </div>
+      </div>
     </div>
 
     <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
@@ -216,6 +247,16 @@
       <div class="form-group">
         <label>ファイル</label>
         <input type="file" id="uploadFileInput" required>
+      </div>
+      <div class="form-group">
+        <label style="display:flex; align-items:center; justify-content:space-between; font-weight:normal;">
+          <span>OCRでテキストを自動抽出する</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="uploadUseOcr" checked>
+            <span class="toggle-slider"></span>
+          </span>
+        </label>
+        <div style="font-size:12px; color:var(--text-sub); margin-top:2px;">オフにするとOCR処理をスキップします（保存のみ行われます）</div>
       </div>
       <div class="form-group">
         <label>表示名（空欄の場合はファイル名を使用）</label>
@@ -267,12 +308,6 @@
       <div class="form-group">
         <label>説明・備考</label>
         <textarea id="uploadDescription" rows="2"></textarea>
-      </div>
-      <div class="form-group">
-        <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
-          <input type="checkbox" id="uploadUseOcr" checked style="width:auto;">
-          OCRでテキストを自動抽出する（チェックを外すと処理をスキップします）
-        </label>
       </div>
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:24px;">
         <button type="button" class="btn btn-secondary" onclick="closeCreateModal()">閉じる</button>
@@ -517,8 +552,8 @@
       allTagsCache = tagData.tags || [];
       allUseTypesCache = useTypeData.useTypes || [];
 
-      initFilterSelect("filterFormat", allRecordsCache, "形式ID");
-      initFilterSelect("filterUseType", allRecordsCache, "用途種別ID");
+      initFilterSelect("filterFormat", allRecordsCache, "形式ID", getFormatLabel);
+      initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
 
       loader.style.display = "none";
       document.getElementById("mainApp").style.display = "block";
@@ -541,13 +576,14 @@
     }
   }
 
-  // フィルタ用ドロップダウンを、取得済みレコードの値から重複なく生成する
-  // （マスタシートからの一覧取得はPhase5で実装。それまでは実データの値から生成する簡易対応）
-  function initFilterSelect(elementId, records, fieldName) {
+  // フィルタ用ドロップダウンを、取得済みレコードの値から重複なく生成する。
+  // 画面にはID(fieldName)ではなく名前を表示する方針のため、labelFnで表示名に変換する。
+  function initFilterSelect(elementId, records, fieldName, labelFn) {
     const el = document.getElementById(elementId);
     if (!el) return;
     const values = [...new Set(records.map(r => r[fieldName]).filter(v => v))].sort();
-    el.innerHTML = '<option value="">すべて</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
+    el.innerHTML = '<option value="">すべて</option>' +
+      values.map(v => `<option value="${v}">${labelFn ? labelFn(v) : v}</option>`).join('');
   }
 
   // ===== 検索用テキスト正規化（案件管理アプリと同一ロジック） =====
@@ -639,17 +675,24 @@
 
       const item = document.createElement("div");
       item.className = "result-item" + (isLocked ? " is-locked" : "");
-      const hasDriveFile = !!record["DriveファイルID"]; // Drive保存前（仮登録中）はダウンロード対象外
+      // OCR処理中（ロック中）はDriveファイルが既にアップロード済みでも選択対象から外す
+      const isSelectable = !!record["DriveファイルID"] && !isLocked;
+
+      const formatLabel = getFormatLabel(record["形式ID"]);
+      const useTypeLabel = getUseTypeLabel(record["用途種別ID"]);
+      const tagLabels = getTagLabels(record["タグID一覧"]);
+
       item.innerHTML = `
         <div class="row-meta">
-          ${hasDriveFile ? `<input type="checkbox" class="zip-select-checkbox" data-file-id="${record["ファイルID"]}" onclick="event.stopPropagation()">` : ""}
+          ${isSelectable ? `<input type="checkbox" class="zip-select-checkbox" data-file-id="${record["ファイルID"]}" data-row-number="${record["_rowNumber"]}" onclick="event.stopPropagation()">` : ""}
           <span class="badge-no">${record["ファイルID"] || ""}</span>
           <span class="badge-status ${status}">${status === "仮登録" ? (isLocked ? "OCR処理中" : "確認待ち") : "確定済み"}</span>
-          ${record["形式ID"] ? `<span style="font-size:12px; color:#64748b;">形式: ${record["形式ID"]}</span>` : ""}
-          ${record["用途種別ID"] ? `<span style="font-size:12px; color:#64748b;">用途: ${record["用途種別ID"]}</span>` : ""}
+          ${formatLabel ? `<span style="font-size:12px; color:#64748b;">形式: ${formatLabel}</span>` : ""}
+          ${useTypeLabel ? `<span style="font-size:12px; color:#64748b;">用途: ${useTypeLabel}</span>` : ""}
         </div>
         <div class="file-title">${record["表示名"] || record["ファイル名"] || "（無題）"}</div>
         ${(record["取引先"] || record["金額"]) ? `<div style="font-size:12px; color:#64748b; margin-top:2px;">${record["取引先"] || ""}${record["金額"] ? ` ／ ¥${Number(record["金額"]).toLocaleString()}` : ""}</div>` : ""}
+        ${tagLabels.length > 0 ? `<div style="margin-top:6px;">${tagLabels.map(t => `<span class="file-badge">${t}</span>`).join('')}</div>` : ""}
       `;
       if (!isLocked) {
         item.style.cursor = "pointer";
@@ -662,14 +705,51 @@
   }
 
   // =================================================================
-  // 一括ダウンロード（ZIP・S11）
+  // ID → 表示名 変換ヘルパー（アプリ画面にはIDではなく名前を表示する方針）
   // =================================================================
-  window.handleZipDownload = async function() {
-    const checkedBoxes = Array.from(document.querySelectorAll(".zip-select-checkbox:checked"));
-    if (checkedBoxes.length === 0) {
-      return showToast("ダウンロードするファイルにチェックを入れてください");
+  const FORMAT_LABELS = { "01": "画像", "02": "PDF", "03": "Office文書等" };
+
+  function getFormatLabel(formatId) {
+    return FORMAT_LABELS[formatId] || formatId || "";
+  }
+  function getUseTypeLabel(useTypeId) {
+    if (!useTypeId) return "";
+    const found = allUseTypesCache.find(ut => ut.useTypeId === useTypeId);
+    return found ? found.useTypeName : useTypeId;
+  }
+  function getTagLabels(tagIdString) {
+    const ids = String(tagIdString || "").split(",").map(s => s.trim()).filter(Boolean);
+    return ids.map(id => {
+      const found = allTagsCache.find(t => t.tagId === id);
+      return found ? found.tagName : id;
+    });
+  }
+
+  // =================================================================
+  // 選択ファイル一括操作（プルダウンメニュー：ZIPダウンロード／ゴミ箱へ移動）
+  // =================================================================
+  window.toggleBulkActionMenu = function() {
+    const menu = document.getElementById("bulkActionMenu");
+    menu.style.display = (menu.style.display === "none") ? "block" : "none";
+  };
+  // メニュー外クリックで閉じる
+  document.addEventListener("click", (e) => {
+    const wrapper = document.getElementById("bulkActionDropdownWrapper");
+    if (wrapper && !wrapper.contains(e.target)) {
+      document.getElementById("bulkActionMenu").style.display = "none";
     }
-    const fileIds = checkedBoxes.map(el => el.dataset.fileId);
+  });
+
+  function getSelectedFileIds() {
+    return Array.from(document.querySelectorAll(".zip-select-checkbox:checked")).map(el => el.dataset.fileId);
+  }
+
+  window.handleZipDownload = async function() {
+    document.getElementById("bulkActionMenu").style.display = "none";
+    const fileIds = getSelectedFileIds();
+    if (fileIds.length === 0) {
+      return showToast("ファイルにチェックを入れてください");
+    }
 
     const result = await Swal.fire({
       title: `${fileIds.length}件のファイルをZIPでダウンロードします`,
@@ -705,6 +785,52 @@
     } catch (err) {
       loader.style.display = "none";
       Swal.fire({ icon: 'error', title: 'ダウンロードエラー', text: err.message, confirmButtonText: 'OK' });
+    }
+  };
+
+  window.handleBulkMoveToTrash = async function() {
+    document.getElementById("bulkActionMenu").style.display = "none";
+
+    // チェックボックスの data-file-id / data-row-number から選択項目を組み立てる
+    const checkedBoxes = Array.from(document.querySelectorAll(".zip-select-checkbox:checked"));
+    if (checkedBoxes.length === 0) {
+      return showToast("ファイルにチェックを入れてください");
+    }
+    const items = checkedBoxes.map(el => ({ fileId: el.dataset.fileId, rowNumber: Number(el.dataset.rowNumber) }));
+
+    const result = await Swal.fire({
+      title: `${items.length}件のファイルをゴミ箱へ移動しますか？`,
+      text: '30日以内であれば復元できます。',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      confirmButtonText: '移動する',
+      cancelButtonText: 'キャンセル'
+    });
+    if (!result.isConfirmed) return;
+
+    const loader = document.getElementById("initLoader");
+    loader.style.display = "flex";
+    document.getElementById("loaderText").textContent = "ゴミ箱へ移動中...";
+
+    try {
+      const res = await apiCall("moveMultipleToTrash", { items });
+      await refreshRecordsCache();
+      search();
+      loader.style.display = "none";
+      if (res.failedItems && res.failedItems.length > 0) {
+        Swal.fire({
+          icon: 'warning',
+          title: `${res.successCount}件を移動しました（${res.failedItems.length}件失敗）`,
+          html: res.failedItems.map(f => `${f.fileId}: ${f.reason}`).join('<br>'),
+          confirmButtonText: 'OK'
+        });
+      } else {
+        showToast(`${res.successCount}件をゴミ箱へ移動しました。`);
+      }
+    } catch (err) {
+      loader.style.display = "none";
+      Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
     }
   };
 
@@ -834,8 +960,8 @@
     allLinksCache = listData.links || [];
     allTagsCache = tagData.tags || [];
     allUseTypesCache = useTypeData.useTypes || [];
-    initFilterSelect("filterFormat", allRecordsCache, "形式ID");
-    initFilterSelect("filterUseType", allRecordsCache, "用途種別ID");
+    initFilterSelect("filterFormat", allRecordsCache, "形式ID", getFormatLabel);
+    initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
   }
 
   // =================================================================
@@ -857,8 +983,8 @@
     document.getElementById("detailAmount").value = record["金額"] || "";
     document.getElementById("detailTransactionDate").value = record["取引日"] || "";
     document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
-    // ゴミ箱への移動は確定済みファイルのみ許可（仮登録中はレビューを完了させることを優先）
-    document.getElementById("detailDeleteBtn").style.display = isConfirmMode ? "none" : "inline-flex";
+    // ゴミ箱への移動は確定済み・確認待ちの両方で許可する（サーバー側でもOCR処理中は拒否される）
+    document.getElementById("detailDeleteBtn").style.display = "inline-flex";
 
     // 用途種別セレクトをマスタから動的生成する
     renderUseTypeSelectInto("detailUseTypeId", record["用途種別ID"], "未設定");
