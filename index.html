@@ -58,20 +58,33 @@
   .btn-success { background-color: var(--success); color: white; }
   .btn-success:hover { background-color: var(--success-hover); }
 
-  /* 一覧カード（案件管理アプリのresult-itemを踏襲したシンプル版） */
-  .result-item {
-    background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-    margin-bottom: 14px; padding: 16px 20px; border: 1px solid #e2e8f0;
-  }
-  .result-item.is-locked { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
-  .row-meta { display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
   .badge-no { background:#e2e8f0; color:#334155; padding:3px 10px; border-radius:6px; font-size:13px; font-weight:bold; }
   .badge-status { padding:3px 10px; border-radius:6px; font-size:12px; font-weight:bold; }
   .badge-status.仮登録 { background:#fef3c7; color:#92400e; }
   .badge-status.通常 { background:#dcfce7; color:#166534; }
-  .file-title { font-size:16px; font-weight:bold; color:#0f172a; }
-  .file-badge { display:inline-block; padding:3px 10px; margin:2px 4px 0 0; border-radius:6px; font-size:12px;
-    font-weight:bold; background:#e3f2fd; color:#0d47a1; border:1px solid #90caf9; }
+
+  /* 一覧表示（ヘッダー行付きグリッド）。列幅はヘッダー・行の両方で共有し、位置がずれないようにする */
+  .file-list-wrapper { overflow-x: auto; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+  .file-list-grid {
+    display: grid;
+    grid-template-columns: 32px 56px 84px minmax(180px, 1fr) 100px 76px 130px 96px 96px 90px;
+    align-items: center;
+    gap: 10px;
+    min-width: 960px;
+  }
+  .file-list-header {
+    font-size: 12px; font-weight: bold; color: #64748b; padding: 10px 14px;
+    border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; background: white; z-index: 2;
+  }
+  .file-list-row {
+    padding: 12px 14px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; font-size: 13px;
+  }
+  .file-list-row:last-child { border-bottom: none; }
+  .file-list-row:hover { background: #f8fafc; }
+  .file-list-row.is-locked { background:#f1f5f9; color:#94a3b8; cursor:not-allowed; }
+  .file-list-cell-title { font-weight: bold; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-list-cell-amount { text-align: right; }
+  .file-list-cell-muted { color: #94a3b8; }
 
   /* モーダル（案件管理アプリと共通デザイン） */
   .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6);
@@ -86,6 +99,7 @@
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; color: #334155; }
   .form-group input, .form-group select, .form-group textarea { width: 100%; box-sizing: border-box; }
+  .badge-required { background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-left: 6px; vertical-align: middle; }
   .link-chip { display:inline-flex; align-items:center; gap:6px; background:#e0f2fe; color:#0369a1;
     padding:4px 10px; border-radius:14px; font-size:13px; margin:2px; }
   .link-chip .remove { cursor:pointer; font-weight:bold; }
@@ -118,6 +132,15 @@
     border-radius: 6px; cursor: pointer; transition: all 0.2s ease;
   }
   .mini-logout-btn:hover { background-color: #fee2e2; color: #ef4444; border-color: #fca5a5; }
+
+  /* ログインユーザー表記とログアウトボタンを同系デザインで揃えるための共通スタイル */
+  .user-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 13px; font-weight: bold; padding: 4px 12px; border-radius: 20px;
+    background: #e2e8f0; color: var(--text-sub); border: none; cursor: default;
+  }
+  .user-pill-action { cursor: pointer; background: #f1f5f9; color: #64748b; transition: all 0.2s ease; }
+  .user-pill-action:hover { background-color: #fee2e2; color: #ef4444; }
 
   #initLoader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background: #ffffff; z-index: 9999; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 120px; }
   @keyframes pulseText { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
@@ -165,9 +188,6 @@
 <!-- メインアプリ画面 -->
 <div id="mainApp" style="display:none; padding: 12px;">
   <div style="display: flex; align-items: center; gap:8px; margin: 12px 12px 8px 12px; flex-wrap:wrap;">
-    <button type="button" id="logoutBtn" class="mini-logout-btn" onclick="handleLogout()">
-      <span class="material-symbols-outlined">logout</span><span>ログアウト</span>
-    </button>
     <button type="button" class="mini-logout-btn" onclick="openTagModal()">
       <span class="material-symbols-outlined">sell</span><span>マスタ管理</span>
     </button>
@@ -177,7 +197,12 @@
     <button type="button" id="deletedFilesBtn" class="mini-logout-btn" style="display:none;" onclick="openDeletedFilesModal()">
       <span class="material-symbols-outlined">restore_from_trash</span><span>削除済み管理（管理者）</span>
     </button>
-    <span id="userDisplayLabel" style="margin-left: auto; font-size: 13px; color: var(--text-sub); font-weight: bold; background: #e2e8f0; padding: 4px 12px; border-radius: 20px;"></span>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+      <span id="userDisplayLabel" class="user-pill"></span>
+      <button type="button" id="logoutBtn" class="user-pill user-pill-action" onclick="handleLogout()">
+        <span class="material-symbols-outlined" style="font-size:16px;">logout</span>ログアウト
+      </button>
+    </div>
   </div>
 
   <!-- 検索・フィルターセクション -->
@@ -206,21 +231,60 @@
     </div>
 
     <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
-      <div style="flex: 1; min-width: 160px;">
+      <div style="flex: 1; min-width: 140px;">
         <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">案件No</label>
         <input type="text" id="filterCaseNo" placeholder="例：123" style="width:100%;">
       </div>
       <div style="flex: 1; min-width: 160px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">形式</label>
-        <select id="filterFormat" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
-      </div>
-      <div style="flex: 1; min-width: 160px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">用途種別</label>
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">書類種別</label>
         <select id="filterUseType" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
       </div>
+      <div style="flex: 1; min-width: 140px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">タグ</label>
+        <select id="filterTag" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
+      </div>
+      <div style="flex: 1; min-width: 140px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">発行／受領</label>
+        <select id="filterIssuedOrReceived" style="width:100%; background-color:#fafafa;">
+          <option value="">すべて</option>
+          <option value="発行">発行</option>
+          <option value="受領">受領</option>
+        </select>
+      </div>
+      <div style="flex: 1; min-width: 160px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">取引先</label>
+        <input type="text" id="filterClient" placeholder="部分一致" style="width:100%;">
+      </div>
+      <div style="flex: 1; min-width: 160px;">
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">作成者</label>
+        <input type="text" id="filterUploader" placeholder="部分一致" style="width:100%;">
+      </div>
       <div style="flex: 2; min-width: 240px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">キーワード検索（ファイル名・OCRテキスト）</label>
+        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">キーワード検索</label>
         <input type="text" id="searchValue" placeholder="文字を入力（Enterキーでも検索できます）" style="width:100%;">
+      </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-top: 14px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 2; min-width: 280px;">
+        <div style="flex: 1; min-width: 130px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">取引日（開始）※デフォルト全期間</label>
+          <input type="date" id="filterTransactionStartDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+        </div>
+        <div style="flex: 1; min-width: 130px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">取引日（終了）</label>
+          <input type="date" id="filterTransactionEndDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+        </div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 2; min-width: 280px;">
+        <div style="flex: 1; min-width: 130px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">作成日（開始）※デフォルト全期間</label>
+          <input type="date" id="filterCreatedStartDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+        </div>
+        <div style="flex: 1; min-width: 130px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">作成日（終了）</label>
+          <input type="date" id="filterCreatedEndDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+        </div>
       </div>
       <div style="display:flex; gap:8px; min-width:220px; flex:1;">
         <button id="searchBtn" class="btn btn-primary" onclick="search()" style="flex:1; padding:13px; font-size:16px;">
@@ -234,7 +298,23 @@
   </div>
 
   <div id="searchCount" style="margin: 0 12px 12px 12px; font-weight: bold; font-size: 16px;"></div>
-  <div id="results" style="margin: 0 12px;"></div>
+
+  <!-- 一覧表示（ヘッダー行付き・横スクロール対応）。ヘッダーと行の列幅は同じgrid-template-columnsで揃える -->
+  <div class="file-list-wrapper" style="margin: 0 12px;">
+    <div class="file-list-grid file-list-header">
+      <div></div>
+      <div>ID</div>
+      <div>状態</div>
+      <div>ファイル名</div>
+      <div>書類種別</div>
+      <div>発行/受領</div>
+      <div>取引先</div>
+      <div>取引日</div>
+      <div class="file-list-cell-amount">金額</div>
+      <div>作成者</div>
+    </div>
+    <div id="results"></div>
+  </div>
 </div>
 
 <!-- 新規アップロードモーダル（S03） -->
@@ -270,7 +350,7 @@
         <div id="linkChipArea" style="margin-top:6px;"></div>
       </div>
       <div class="form-group">
-        <label>用途種別</label>
+        <label>書類種別</label>
         <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
       </div>
       <div class="form-group">
@@ -283,9 +363,9 @@
           <input type="text" id="uploadClient" placeholder="例：〇〇株式会社">
         </div>
         <div class="form-group" style="flex:1;">
-          <label>発行／受領</label>
-          <select id="uploadIssuedOrReceived">
-            <option value="">未設定</option>
+          <label>発行／受領 <span class="badge-required">必須</span></label>
+          <select id="uploadIssuedOrReceived" required>
+            <option value="">選択してください</option>
             <option value="発行">発行</option>
             <option value="受領">受領</option>
           </select>
@@ -336,7 +416,7 @@
         <input type="text" id="detailDisplayName" required>
       </div>
       <div class="form-group">
-        <label>用途種別</label>
+        <label>書類種別</label>
         <select id="detailUseTypeId"><option value="">未設定</option></select>
       </div>
       <div class="form-group">
@@ -400,9 +480,9 @@
     </div>
     <div id="tagListArea"></div>
 
-    <h3 style="font-size:15px; color:#334155; margin-top:24px;">用途種別（見積書・請求書など）</h3>
+    <h3 style="font-size:15px; color:#334155; margin-top:24px;">書類種別（見積書・請求書など）</h3>
     <div style="display:flex; gap:8px; margin-bottom:6px;">
-      <input type="text" id="newUseTypeNameInput" placeholder="用途種別名（例：見積書）" style="flex:1;">
+      <input type="text" id="newUseTypeNameInput" placeholder="書類種別名（例：見積書）" style="flex:1;">
     </div>
     <div style="display:flex; gap:8px; margin-bottom:12px;">
       <input type="text" id="newUseTypeKeywordsInput" placeholder="自動判定用キーワード（カンマ区切り・任意）" style="flex:1;">
@@ -552,8 +632,8 @@
       allTagsCache = tagData.tags || [];
       allUseTypesCache = useTypeData.useTypes || [];
 
-      initFilterSelect("filterFormat", allRecordsCache, "形式ID", getFormatLabel);
       initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
+      initTagFilterSelect();
 
       loader.style.display = "none";
       document.getElementById("mainApp").style.display = "block";
@@ -586,6 +666,15 @@
       values.map(v => `<option value="${v}">${labelFn ? labelFn(v) : v}</option>`).join('');
   }
 
+  // タグ絞り込みは「タグID一覧」がカンマ区切りの複数値のため、initFilterSelectでは扱えない。
+  // マスタ（allTagsCache）からそのまま選択肢を生成する。
+  function initTagFilterSelect() {
+    const el = document.getElementById("filterTag");
+    if (!el) return;
+    el.innerHTML = '<option value="">すべて</option>' +
+      allTagsCache.map(t => `<option value="${t.tagId}">${t.tagName}</option>`).join('');
+  }
+
   // ===== 検索用テキスト正規化（案件管理アプリと同一ロジック） =====
   const KANA_TO_HANKAKU_MAP = {
     'ガ':'ｶﾞ','ギ':'ｷﾞ','グ':'ｸﾞ','ゲ':'ｹﾞ','ゴ':'ｺﾞ','ザ':'ｻﾞ','ジ':'ｼﾞ','ズ':'ｽﾞ','ゼ':'ｾﾞ','ゾ':'ｿﾞ',
@@ -614,9 +703,19 @@
       .map(link => link["ファイルID"]);
   }
 
-  function filterRecordsClientSide(records, { caseNo, keyword, format, useType }) {
+  function filterRecordsClientSide(records, filters) {
+    const { caseNo, keyword, useType, tag, issuedOrReceived, client, uploader,
+            transactionStart, transactionEnd, createdStart, createdEnd } = filters;
     const nKeyword = normalizeText(keyword);
+    const nClient = normalizeText(client);
+    const nUploader = normalizeText(uploader);
     const linkedFileIds = caseNo ? getFileIdsLinkedToCase(caseNo) : null;
+
+    // 日付範囲は未指定（空欄）であれば全期間を対象とする（デフォルト全期間）
+    const tStart = transactionStart ? new Date(transactionStart) : null;
+    const tEnd = transactionEnd ? endOfDay(new Date(transactionEnd)) : null;
+    const cStart = createdStart ? new Date(createdStart) : null;
+    const cEnd = createdEnd ? endOfDay(new Date(createdEnd)) : null;
 
     return records.filter(r => {
       // 一覧画面にはゴミ箱・削除済みは表示しない（それぞれ専用画面で扱う。設計書3-7）
@@ -624,8 +723,29 @@
       if (status === "ゴミ箱" || status === "削除済み") return false;
 
       if (linkedFileIds && !linkedFileIds.includes(r["ファイルID"])) return false;
-      if (format && r["形式ID"] !== format) return false;
       if (useType && r["用途種別ID"] !== useType) return false;
+      if (issuedOrReceived && r["発行受領区分"] !== issuedOrReceived) return false;
+
+      if (tag) {
+        const tagIds = String(r["タグID一覧"] || "").split(",").map(s => s.trim());
+        if (!tagIds.includes(tag)) return false;
+      }
+      if (nClient && !normalizeText(r["取引先"]).includes(nClient)) return false;
+      if (nUploader && !normalizeText(r["アップロード者"]).includes(nUploader)) return false;
+
+      if (tStart || tEnd) {
+        const tDate = r["取引日"] ? new Date(r["取引日"]) : null;
+        if (!tDate || isNaN(tDate.getTime())) return false;
+        if (tStart && tDate < tStart) return false;
+        if (tEnd && tDate > tEnd) return false;
+      }
+      if (cStart || cEnd) {
+        const cDate = r["作成日時"] ? new Date(r["作成日時"]) : null;
+        if (!cDate || isNaN(cDate.getTime())) return false;
+        if (cStart && cDate < cStart) return false;
+        if (cEnd && cDate > cEnd) return false;
+      }
+
       if (nKeyword) {
         const fullText = normalizeText(String(r["表示名"] || "") + String(r["ファイル名"] || "") + String(r["OCRテキスト（全文）"] || ""));
         if (!fullText.includes(nKeyword)) return false;
@@ -634,21 +754,39 @@
     });
   }
 
-  window.search = function() {
-    const caseNo = document.getElementById("filterCaseNo").value.trim();
-    const keyword = document.getElementById("searchValue").value;
-    const format = document.getElementById("filterFormat").value;
-    const useType = document.getElementById("filterUseType").value;
+  /** 日付の終了側を「その日の23:59:59」にし、当日分を範囲に含める（案件管理アプリと同様の期間指定の考え方） */
+  function endOfDay(date) {
+    date.setHours(23, 59, 59, 999);
+    return date;
+  }
 
-    const filtered = filterRecordsClientSide(allRecordsCache, { caseNo, keyword, format, useType });
-    displayResults(filtered);
+  window.search = function() {
+    const filters = {
+      caseNo: document.getElementById("filterCaseNo").value.trim(),
+      keyword: document.getElementById("searchValue").value,
+      useType: document.getElementById("filterUseType").value,
+      tag: document.getElementById("filterTag").value,
+      issuedOrReceived: document.getElementById("filterIssuedOrReceived").value,
+      client: document.getElementById("filterClient").value,
+      uploader: document.getElementById("filterUploader").value,
+      transactionStart: document.getElementById("filterTransactionStartDate").value,
+      transactionEnd: document.getElementById("filterTransactionEndDate").value,
+      createdStart: document.getElementById("filterCreatedStartDate").value,
+      createdEnd: document.getElementById("filterCreatedEndDate").value
+    };
+    displayResults(filterRecordsClientSide(allRecordsCache, filters));
   };
 
   window.clearSearchFilters = function() {
-    document.getElementById("filterCaseNo").value = "";
-    document.getElementById("searchValue").value = "";
-    document.getElementById("filterFormat").value = "";
-    document.getElementById("filterUseType").value = "";
+    ["filterCaseNo", "searchValue", "filterClient", "filterUploader"].forEach(id => {
+      document.getElementById(id).value = "";
+    });
+    ["filterUseType", "filterTag", "filterIssuedOrReceived"].forEach(id => {
+      document.getElementById(id).value = "";
+    });
+    ["filterTransactionStartDate", "filterTransactionEndDate", "filterCreatedStartDate", "filterCreatedEndDate"].forEach(id => {
+      document.getElementById(id).value = "";
+    });
     search();
   };
 
@@ -672,57 +810,43 @@
       const ocrStatus = record["OCRステータス"] || "";
       // 仮登録×OCR処理中の間は編集不可（設計書9-2）。一覧上はロック表示にしてクリックを無効化する
       const isLocked = (status === "仮登録" && ocrStatus === "処理中");
-
-      const item = document.createElement("div");
-      item.className = "result-item" + (isLocked ? " is-locked" : "");
       // OCR処理中（ロック中）はDriveファイルが既にアップロード済みでも選択対象から外す
       const isSelectable = !!record["DriveファイルID"] && !isLocked;
 
-      const formatLabel = getFormatLabel(record["形式ID"]);
       const useTypeLabel = getUseTypeLabel(record["用途種別ID"]);
-      const tagLabels = getTagLabels(record["タグID一覧"]);
+      const statusLabel = status === "仮登録" ? (isLocked ? "OCR処理中" : "確認待ち") : "確定済み";
+      const amountText = record["金額"] ? `¥${Number(record["金額"]).toLocaleString()}` : "";
 
-      item.innerHTML = `
-        <div class="row-meta">
-          ${isSelectable ? `<input type="checkbox" class="zip-select-checkbox" data-file-id="${record["ファイルID"]}" data-row-number="${record["_rowNumber"]}" onclick="event.stopPropagation()">` : ""}
-          <span class="badge-no">${record["ファイルID"] || ""}</span>
-          <span class="badge-status ${status}">${status === "仮登録" ? (isLocked ? "OCR処理中" : "確認待ち") : "確定済み"}</span>
-          ${formatLabel ? `<span style="font-size:12px; color:#64748b;">形式: ${formatLabel}</span>` : ""}
-          ${useTypeLabel ? `<span style="font-size:12px; color:#64748b;">用途: ${useTypeLabel}</span>` : ""}
-        </div>
-        <div class="file-title">${record["表示名"] || record["ファイル名"] || "（無題）"}</div>
-        ${(record["取引先"] || record["金額"]) ? `<div style="font-size:12px; color:#64748b; margin-top:2px;">${record["取引先"] || ""}${record["金額"] ? ` ／ ¥${Number(record["金額"]).toLocaleString()}` : ""}</div>` : ""}
-        ${tagLabels.length > 0 ? `<div style="margin-top:6px;">${tagLabels.map(t => `<span class="file-badge">${t}</span>`).join('')}</div>` : ""}
+      const row = document.createElement("div");
+      row.className = "file-list-grid file-list-row" + (isLocked ? " is-locked" : "");
+      row.innerHTML = `
+        <div>${isSelectable ? `<input type="checkbox" class="zip-select-checkbox" data-file-id="${record["ファイルID"]}" data-row-number="${record["_rowNumber"]}" onclick="event.stopPropagation()">` : ""}</div>
+        <div class="badge-no">${record["ファイルID"] || ""}</div>
+        <div><span class="badge-status ${status}">${statusLabel}</span></div>
+        <div class="file-list-cell-title">${record["表示名"] || record["ファイル名"] || "（無題）"}</div>
+        <div>${useTypeLabel || '<span class="file-list-cell-muted">－</span>'}</div>
+        <div>${record["発行受領区分"] || '<span class="file-list-cell-muted">－</span>'}</div>
+        <div>${record["取引先"] || '<span class="file-list-cell-muted">－</span>'}</div>
+        <div>${record["取引日"] || '<span class="file-list-cell-muted">－</span>'}</div>
+        <div class="file-list-cell-amount">${amountText || '<span class="file-list-cell-muted">－</span>'}</div>
+        <div>${record["アップロード者"] || '<span class="file-list-cell-muted">－</span>'}</div>
       `;
       if (!isLocked) {
-        item.style.cursor = "pointer";
-        item.onclick = () => openDetailModal(record);
+        row.onclick = () => openDetailModal(record);
       } else {
-        item.onclick = () => showToast("OCR処理中のため編集できません");
+        row.onclick = () => showToast("OCR処理中のため編集できません");
       }
-      container.appendChild(item);
+      container.appendChild(row);
     });
   }
 
   // =================================================================
   // ID → 表示名 変換ヘルパー（アプリ画面にはIDではなく名前を表示する方針）
   // =================================================================
-  const FORMAT_LABELS = { "01": "画像", "02": "PDF", "03": "Office文書等" };
-
-  function getFormatLabel(formatId) {
-    return FORMAT_LABELS[formatId] || formatId || "";
-  }
   function getUseTypeLabel(useTypeId) {
     if (!useTypeId) return "";
     const found = allUseTypesCache.find(ut => ut.useTypeId === useTypeId);
     return found ? found.useTypeName : useTypeId;
-  }
-  function getTagLabels(tagIdString) {
-    const ids = String(tagIdString || "").split(",").map(s => s.trim()).filter(Boolean);
-    return ids.map(id => {
-      const found = allTagsCache.find(t => t.tagId === id);
-      return found ? found.tagName : id;
-    });
   }
 
   // =================================================================
@@ -960,8 +1084,8 @@
     allLinksCache = listData.links || [];
     allTagsCache = tagData.tags || [];
     allUseTypesCache = useTypeData.useTypes || [];
-    initFilterSelect("filterFormat", allRecordsCache, "形式ID", getFormatLabel);
     initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
+    initTagFilterSelect();
   }
 
   // =================================================================
@@ -1183,7 +1307,7 @@
   function renderUseTypeList() {
     const area = document.getElementById("useTypeListArea");
     if (allUseTypesCache.length === 0) {
-      area.innerHTML = '<p style="color:#94a3b8; font-size:14px;">用途種別はまだ登録されていません。</p>';
+      area.innerHTML = '<p style="color:#94a3b8; font-size:14px;">書類種別はまだ登録されていません。</p>';
       return;
     }
     area.innerHTML = allUseTypesCache.map(ut => `
@@ -1216,8 +1340,8 @@
       const result = await apiCall("deleteUseType", { useTypeId: useTypeId, force: false });
       if (!result.success) {
         const confirmResult = await Swal.fire({
-          title: `この用途種別は${result.inUseCount}件のファイルで使用中です`,
-          text: '削除すると、該当ファイルの用途種別は未設定に戻ります。続行しますか？',
+          title: `この書類種別は${result.inUseCount}件のファイルで使用中です`,
+          text: '削除すると、該当ファイルの書類種別は未設定に戻ります。続行しますか？',
           icon: 'warning',
           showCancelButton: true,
           confirmButtonColor: '#dc2626',
