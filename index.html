@@ -73,6 +73,11 @@
   /* モーダル（案件管理アプリと共通デザイン） */
   .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6);
     z-index: 5000; display: flex; align-items: center; justify-content: center; }
+
+  /* SweetAlert2は独自モーダル(z-index:5000)より必ず手前に表示する。
+     これを設定しないと、モーダルを開いた状態で確認ダイアログ/トーストを出した際に
+     ダイアログが自作モーダルの後ろに隠れて操作不能になる（実際に発生した不具合の原因）。 */
+  .swal2-container { z-index: 10000 !important; }
   .modal-content { background: white; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-sizing: border-box;
     max-height: 90vh; overflow-y: auto; }
   .form-group { margin-bottom: 16px; }
@@ -221,6 +226,46 @@
           <input type="text" id="linkCaseNoInput" placeholder="案件Noを入力してEnter" style="flex:1;">
         </div>
         <div id="linkChipArea" style="margin-top:6px;"></div>
+      </div>
+      <div class="form-group">
+        <label>用途種別</label>
+        <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
+      </div>
+      <div class="form-group">
+        <label>タグ</label>
+        <div id="uploadTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div class="form-group" style="flex:1;">
+          <label>取引先</label>
+          <input type="text" id="uploadClient" placeholder="例：〇〇株式会社">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>発行／受領</label>
+          <select id="uploadIssuedOrReceived">
+            <option value="">未設定</option>
+            <option value="発行">発行</option>
+            <option value="受領">受領</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>適格事業者登録番号</label>
+        <input type="text" id="uploadInvoiceRegistrationNumber" placeholder="例：T1234567890123（Tから始まる13桁）">
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div class="form-group" style="flex:1;">
+          <label>金額</label>
+          <input type="number" id="uploadAmount" placeholder="例：50000">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>取引日</label>
+          <input type="date" id="uploadTransactionDate">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>説明・備考</label>
+        <textarea id="uploadDescription" rows="2"></textarea>
       </div>
       <div class="form-group">
         <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
@@ -675,6 +720,8 @@
     document.getElementById("createForm").reset();
     pendingLinks = [];
     renderLinkChips();
+    renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
+    renderTagCheckboxesInto("uploadTagCheckboxes", []);
     document.getElementById("createModal").style.display = "flex";
   };
   window.closeCreateModal = function() {
@@ -722,6 +769,18 @@
     const useOcr = document.getElementById("uploadUseOcr").checked;
     const links = pendingLinks.map(caseNo => ({ type: "案件", id: caseNo }));
 
+    // アップロード時点で入力された各種データ項目（用途種別・タグ以下は任意入力）
+    const entryFields = {
+      useTypeId: document.getElementById("uploadUseTypeId").value.trim(),
+      tagIds: getCheckedTagIdsIn("uploadTagCheckboxes"),
+      client: document.getElementById("uploadClient").value.trim(),
+      issuedOrReceived: document.getElementById("uploadIssuedOrReceived").value,
+      invoiceRegistrationNumber: document.getElementById("uploadInvoiceRegistrationNumber").value.trim(),
+      amount: document.getElementById("uploadAmount").value.trim(),
+      transactionDate: document.getElementById("uploadTransactionDate").value,
+      description: document.getElementById("uploadDescription").value.trim()
+    };
+
     const loader = document.getElementById("initLoader");
     loader.style.display = "flex";
     document.getElementById("loaderText").textContent = "仮登録中...";
@@ -729,7 +788,7 @@
     try {
       // 【1段目】シートへ仮登録（軽量。base64はまだ送らない）
       const createResult = await apiCall("createRecordSheetOnly", {
-        fData: { fileName: file.name, mimeType: file.type, displayName: displayName, links: links }
+        fData: Object.assign({ fileName: file.name, mimeType: file.type, displayName: displayName, links: links }, entryFields)
       });
 
       closeCreateModal();
@@ -750,19 +809,15 @@
       });
 
       loader.style.display = "none";
-      const result = await Swal.fire({
+      // 完了通知は選択式にせず、OK確認のみ。押下後は必ず画面を最新化する。
+      await Swal.fire({
         icon: 'success',
         title: '処理が完了しました',
-        text: '最新の内容を一覧に反映しますか？',
-        showCancelButton: true,
-        confirmButtonText: '反映する',
-        cancelButtonText: 'このまま',
+        confirmButtonText: 'OK',
         confirmButtonColor: 'var(--primary)'
       });
-      if (result.isConfirmed) {
-        await refreshRecordsCache();
-        search();
-      }
+      await refreshRecordsCache();
+      search();
 
     } catch (err) {
       loader.style.display = "none";
@@ -805,21 +860,11 @@
     document.getElementById("detailDeleteBtn").style.display = isConfirmMode ? "none" : "inline-flex";
 
     // 用途種別セレクトをマスタから動的生成する
-    const useTypeSelect = document.getElementById("detailUseTypeId");
-    useTypeSelect.innerHTML = '<option value="">未設定</option>' +
-      allUseTypesCache.map(ut => `<option value="${ut.useTypeId}">${ut.useTypeName}</option>`).join('');
-    useTypeSelect.value = record["用途種別ID"] || "";
+    renderUseTypeSelectInto("detailUseTypeId", record["用途種別ID"], "未設定");
 
     // タグのチェックボックスを、現在選択中のタグを反映して描画する
     const currentTagIds = String(record["タグID一覧"] || "").split(",").map(s => s.trim()).filter(Boolean);
-    const tagArea = document.getElementById("detailTagCheckboxes");
-    tagArea.innerHTML = allTagsCache.length === 0
-      ? '<span style="font-size:13px; color:#94a3b8;">タグ未登録です（上部「タグ管理」から追加できます）</span>'
-      : allTagsCache.map(tag => `
-          <label style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; padding:4px 10px; border-radius:12px; font-size:13px;">
-            <input type="checkbox" value="${tag.tagId}" ${currentTagIds.includes(tag.tagId) ? "checked" : ""}> ${tag.tagName}
-          </label>
-        `).join('');
+    renderTagCheckboxesInto("detailTagCheckboxes", currentTagIds);
 
     // Driveプレビュー（画像・PDF・Office文書いずれもDriveの標準プレビューiframeで表示可能）
     const previewArea = document.getElementById("detailPreviewArea");
@@ -840,8 +885,30 @@
     document.getElementById("detailModal").style.display = "none";
   };
 
-  function getCheckedTagIds() {
-    return Array.from(document.querySelectorAll("#detailTagCheckboxes input[type=checkbox]:checked")).map(el => el.value);
+  // =================================================================
+  // 用途種別セレクト／タグチェックボックスの共通描画処理
+  // （アップロードモーダル・詳細モーダルの双方から呼び出す。二重管理を避けるため共通化）
+  // =================================================================
+  function renderUseTypeSelectInto(selectId, selectedValue, placeholderText) {
+    const select = document.getElementById(selectId);
+    select.innerHTML = `<option value="">${placeholderText}</option>` +
+      allUseTypesCache.map(ut => `<option value="${ut.useTypeId}">${ut.useTypeName}</option>`).join('');
+    select.value = selectedValue || "";
+  }
+
+  function renderTagCheckboxesInto(containerId, selectedTagIds) {
+    const area = document.getElementById(containerId);
+    area.innerHTML = allTagsCache.length === 0
+      ? '<span style="font-size:13px; color:#94a3b8;">タグ未登録です（上部「マスタ管理」から追加できます）</span>'
+      : allTagsCache.map(tag => `
+          <label style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; padding:4px 10px; border-radius:12px; font-size:13px;">
+            <input type="checkbox" value="${tag.tagId}" ${selectedTagIds.includes(tag.tagId) ? "checked" : ""}> ${tag.tagName}
+          </label>
+        `).join('');
+  }
+
+  function getCheckedTagIdsIn(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)).map(el => el.value);
   }
 
   async function handleDetailSubmit(event) {
@@ -860,7 +927,7 @@
           rowNumber: Number(document.getElementById("detailRowNumber").value),
           displayName: document.getElementById("detailDisplayName").value.trim(),
           useTypeId: document.getElementById("detailUseTypeId").value.trim(),
-          tagIds: getCheckedTagIds(),
+          tagIds: getCheckedTagIdsIn("detailTagCheckboxes"),
           client: document.getElementById("detailClient").value.trim(),
           issuedOrReceived: document.getElementById("detailIssuedOrReceived").value,
           invoiceRegistrationNumber: document.getElementById("detailInvoiceRegistrationNumber").value.trim(),
@@ -894,6 +961,11 @@
     });
     if (!result.isConfirmed) return;
 
+    closeDetailModal();
+    const loader = document.getElementById("initLoader");
+    loader.style.display = "flex";
+    document.getElementById("loaderText").textContent = "ゴミ箱へ移動中...";
+
     try {
       await apiCall("moveToTrash", {
         fData: {
@@ -901,11 +973,12 @@
           rowNumber: Number(document.getElementById("detailRowNumber").value)
         }
       });
-      closeDetailModal();
-      showToast("ゴミ箱へ移動しました。");
       await refreshRecordsCache();
       search();
+      loader.style.display = "none";
+      showToast("ゴミ箱へ移動しました。");
     } catch (err) {
+      loader.style.display = "none";
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
     }
   };
@@ -1071,14 +1144,16 @@
   }
 
   window.handleRestoreFromTrash = async function(fileId, rowNumber) {
+    document.getElementById("trashListArea").innerHTML = "復元中...";
     try {
       await apiCall("restoreFromTrash", { fData: { fileId, rowNumber } });
-      showToast("復元しました。");
-      await openTrashModal();
       await refreshRecordsCache();
       search();
+      await openTrashModal(); // ゴミ箱一覧を最新化（復元済みファイルが消えたことを確認できるようにする）
+      showToast("復元しました。");
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+      await openTrashModal();
     }
   };
 
@@ -1114,14 +1189,16 @@
   }
 
   window.handleRestoreDeletedFile = async function(fileId, rowNumber) {
+    document.getElementById("deletedFilesListArea").innerHTML = "復元中...";
     try {
       await apiCall("restoreDeletedFile", { fData: { fileId, rowNumber } });
-      showToast("復元しました。");
-      await openDeletedFilesModal();
       await refreshRecordsCache();
       search();
+      await openDeletedFilesModal();
+      showToast("復元しました。");
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+      await openDeletedFilesModal();
     }
   };
 
