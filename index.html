@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+<!-- favicon未指定だとブラウザが自動的に /favicon.ico を要求し404が発生するため、空アイコンで抑制する -->
+<link rel="icon" href="data:,">
 <meta name="theme-color" content="#ffffff">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -76,6 +78,8 @@
     font-size: 12px; font-weight: bold; color: #64748b; padding: 10px 14px;
     border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; background: white; z-index: 2;
   }
+  /* ヘッダーの各列ラベルは位置を中央に統一する（金額列など個別のtext-alignより優先させる） */
+  .file-list-header > div { text-align: center; }
   .file-list-row {
     padding: 12px 14px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; font-size: 13px;
   }
@@ -230,69 +234,80 @@
       </div>
     </div>
 
-    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
-      <div style="flex: 1; min-width: 140px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">案件No</label>
-        <input type="text" id="filterCaseNo" placeholder="例：123" style="width:100%;">
-      </div>
-      <div style="flex: 1; min-width: 160px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">書類種別</label>
-        <select id="filterUseType" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
-      </div>
-      <div style="flex: 1; min-width: 140px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">タグ</label>
-        <select id="filterTag" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
-      </div>
-      <div style="flex: 1; min-width: 140px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">発行／受領</label>
-        <select id="filterIssuedOrReceived" style="width:100%; background-color:#fafafa;">
-          <option value="">すべて</option>
-          <option value="発行">発行</option>
-          <option value="受領">受領</option>
-        </select>
-      </div>
-      <div style="flex: 1; min-width: 160px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">取引先</label>
-        <input type="text" id="filterClient" placeholder="部分一致" style="width:100%;">
-      </div>
-      <div style="flex: 1; min-width: 160px;">
-        <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">作成者</label>
-        <input type="text" id="filterUploader" placeholder="部分一致" style="width:100%;">
-      </div>
+    <!-- 初期表示はキーワード検索のみ。他の項目は「絞り込み検索」を押すと展開する -->
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
       <div style="flex: 2; min-width: 240px;">
         <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">キーワード検索</label>
         <input type="text" id="searchValue" placeholder="文字を入力（Enterキーでも検索できます）" style="width:100%;">
       </div>
-    </div>
-
-    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-top: 14px;">
-      <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 2; min-width: 280px;">
-        <div style="flex: 1; min-width: 130px;">
-          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">取引日（開始）</label>
-          <input type="date" id="filterTransactionStartDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
-        </div>
-        <div style="flex: 1; min-width: 130px;">
-          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">取引日（終了）</label>
-          <input type="date" id="filterTransactionEndDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
-        </div>
-      </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 2; min-width: 280px;">
-        <div style="flex: 1; min-width: 130px;">
-          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">作成日（開始）</label>
-          <input type="date" id="filterCreatedStartDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
-        </div>
-        <div style="flex: 1; min-width: 130px;">
-          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">作成日（終了）</label>
-          <input type="date" id="filterCreatedEndDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
-        </div>
-      </div>
-      <div style="display:flex; gap:8px; min-width:220px; flex:1;">
-        <button id="searchBtn" class="btn btn-primary" onclick="search()" style="flex:1; padding:13px; font-size:16px;">
+      <div style="display:flex; gap:8px;">
+        <button id="searchBtn" class="btn btn-primary" onclick="search()" style="padding:13px 20px; font-size:16px;">
           <span class="material-symbols-outlined">search</span> 検索する
         </button>
-        <button id="clearBtn" class="btn btn-secondary" onclick="clearSearchFilters()" style="flex:1; padding:13px; font-size:16px;">
+        <button id="clearBtn" class="btn btn-secondary" onclick="clearSearchFilters()" style="padding:13px 20px; font-size:16px;">
           <span class="material-symbols-outlined">clear</span> クリア
         </button>
+        <button type="button" class="btn" style="background:#f1f5f9; color:#334155; padding:13px 20px; font-size:16px;" onclick="toggleAdvancedFilters()">
+          <span class="material-symbols-outlined">tune</span> 絞り込み検索
+          <span id="advancedFilterToggleIcon" class="material-symbols-outlined" style="transition:transform 0.2s;">expand_more</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 絞り込み検索パネル（初期状態は非表示） -->
+    <div id="advancedFilterPanel" style="display:none; margin-top:16px; padding-top:16px; border-top:1px dashed #e2e8f0;">
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
+        <div style="flex: 1; min-width: 140px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">案件No</label>
+          <input type="text" id="filterCaseNo" placeholder="例：123" style="width:100%;">
+        </div>
+        <div style="flex: 1; min-width: 160px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">書類種別</label>
+          <select id="filterUseType" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
+        </div>
+        <div style="flex: 1; min-width: 140px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">タグ</label>
+          <select id="filterTag" style="width:100%; background-color:#fafafa;"><option value="">すべて</option></select>
+        </div>
+        <div style="flex: 1; min-width: 140px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">発行／受領</label>
+          <select id="filterIssuedOrReceived" style="width:100%; background-color:#fafafa;">
+            <option value="">すべて</option>
+            <option value="発行">発行</option>
+            <option value="受領">受領</option>
+          </select>
+        </div>
+        <div style="flex: 1; min-width: 160px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">取引先</label>
+          <input type="text" id="filterClient" placeholder="部分一致" style="width:100%;">
+        </div>
+        <div style="flex: 1; min-width: 160px;">
+          <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub);">作成者</label>
+          <input type="text" id="filterUploader" placeholder="部分一致" style="width:100%;">
+        </div>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-top: 14px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 2; min-width: 280px;">
+          <div style="flex: 1; min-width: 130px;">
+            <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">取引日（開始）※デフォルト全期間</label>
+            <input type="date" id="filterTransactionStartDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+          </div>
+          <div style="flex: 1; min-width: 130px;">
+            <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">取引日（終了）</label>
+            <input type="date" id="filterTransactionEndDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 2; min-width: 280px;">
+          <div style="flex: 1; min-width: 130px;">
+            <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">作成日（開始）※デフォルト全期間</label>
+            <input type="date" id="filterCreatedStartDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+          </div>
+          <div style="flex: 1; min-width: 130px;">
+            <label style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-sub); font-size:0.9rem;">作成日（終了）</label>
+            <input type="date" id="filterCreatedEndDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -620,17 +635,15 @@
       // （サーバー側でも二重チェックしているため、ここは表示制御のみの役割）
       document.getElementById("deletedFilesBtn").style.display = (loginData.permission === "管理者") ? "flex" : "none";
 
-      // ファイル一覧・紐付け情報・タグマスタを取得（クライアント側キャッシュ方式。案件管理アプリと同じ方針）
+      // ファイル一覧・紐付け情報・タグ／書類種別マスタを1回のAPI呼び出しでまとめて取得する。
+      // 以前は3回の個別呼び出し（Promise.all）にしていたが、呼び出しごとに認証処理が
+      // 重複して走ってしまい速度低下の原因になっていたため、統合エンドポイントに変更した。
       document.getElementById("loaderText").textContent = "データを読み込み中...";
-      const [listData, tagData, useTypeData] = await Promise.all([
-        apiCall("loadAllRecords"),
-        apiCall("loadTagMaster"),
-        apiCall("loadUseTypeMaster")
-      ]);
-      allRecordsCache = listData.records || [];
-      allLinksCache = listData.links || [];
-      allTagsCache = tagData.tags || [];
-      allUseTypesCache = useTypeData.useTypes || [];
+      const initialData = await apiCall("loadInitialData");
+      allRecordsCache = initialData.records || [];
+      allLinksCache = initialData.links || [];
+      allTagsCache = initialData.tags || [];
+      allUseTypesCache = initialData.useTypes || [];
 
       initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
       initTagFilterSelect();
@@ -814,7 +827,7 @@
       const isSelectable = !!record["DriveファイルID"] && !isLocked;
 
       const useTypeLabel = getUseTypeLabel(record["用途種別ID"]);
-      const statusLabel = status === "仮登録" ? (isLocked ? "OCR処理中" : "確認待ち") : "確定済み";
+      const statusLabel = status === "仮登録" ? (isLocked ? "処理中" : "未") : "済";
       const amountText = record["金額"] ? `¥${Number(record["金額"]).toLocaleString()}` : "";
 
       const row = document.createElement("div");
@@ -852,6 +865,15 @@
   // =================================================================
   // 選択ファイル一括操作（プルダウンメニュー：ZIPダウンロード／ゴミ箱へ移動）
   // =================================================================
+  // 「絞り込み検索」パネルの開閉（初期表示はキーワード検索のみでスッキリさせるための対応）
+  window.toggleAdvancedFilters = function() {
+    const panel = document.getElementById("advancedFilterPanel");
+    const icon = document.getElementById("advancedFilterToggleIcon");
+    const isOpen = panel.style.display !== "none";
+    panel.style.display = isOpen ? "none" : "block";
+    icon.style.transform = isOpen ? "rotate(0deg)" : "rotate(180deg)";
+  };
+
   window.toggleBulkActionMenu = function() {
     const menu = document.getElementById("bulkActionMenu");
     menu.style.display = (menu.style.display === "none") ? "block" : "none";
@@ -1077,13 +1099,11 @@
   }
 
   async function refreshRecordsCache() {
-    const [listData, tagData, useTypeData] = await Promise.all([
-      apiCall("loadAllRecords"), apiCall("loadTagMaster"), apiCall("loadUseTypeMaster")
-    ]);
-    allRecordsCache = listData.records || [];
-    allLinksCache = listData.links || [];
-    allTagsCache = tagData.tags || [];
-    allUseTypesCache = useTypeData.useTypes || [];
+    const initialData = await apiCall("loadInitialData");
+    allRecordsCache = initialData.records || [];
+    allLinksCache = initialData.links || [];
+    allTagsCache = initialData.tags || [];
+    allUseTypesCache = initialData.useTypes || [];
     initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
     initTagFilterSelect();
   }
