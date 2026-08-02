@@ -69,25 +69,28 @@
   .file-list-wrapper { overflow-x: auto; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
   .file-list-grid {
     display: grid;
-    grid-template-columns: 32px 56px 84px minmax(180px, 1fr) 100px 76px 130px 96px 96px 90px;
+    /* できるだけ横幅を詰めるため、各列は内容量に応じた最小限の幅にする */
+    grid-template-columns: 26px 50px 46px minmax(140px, 1fr) 84px 80px 62px 100px 82px 78px 74px;
     align-items: center;
-    gap: 10px;
-    min-width: 960px;
+    gap: 6px;
+    min-width: 860px;
   }
   .file-list-header {
-    font-size: 12px; font-weight: bold; color: #64748b; padding: 10px 14px;
+    font-size: 11px; font-weight: bold; color: #64748b; padding: 8px 10px;
     border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; background: white; z-index: 2;
   }
-  /* ヘッダーの各列ラベルは位置を中央に統一する（金額列など個別のtext-alignより優先させる） */
+  /* ヘッダーの各列ラベルは位置を中央に統一する */
   .file-list-header > div { text-align: center; }
   .file-list-row {
-    padding: 12px 14px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; font-size: 13px;
+    padding: 9px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; font-size: 12px;
   }
   .file-list-row:last-child { border-bottom: none; }
   .file-list-row:hover { background: #f8fafc; }
   .file-list-row.is-locked { background:#f1f5f9; color:#94a3b8; cursor:not-allowed; }
-  .file-list-cell-title { font-weight: bold; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .file-list-cell-amount { text-align: right; }
+  /* 内容表示も中央揃えに統一し、ファイル名（タイトル）だけは左寄せのまま読みやすさを優先する */
+  .file-list-row > div { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-list-cell-title { font-weight: bold; color: #0f172a; text-align: left !important; }
+  .file-list-cell-amount { text-align: right !important; }
   .file-list-cell-muted { color: #94a3b8; }
 
   /* モーダル（案件管理アプリと共通デザイン） */
@@ -100,6 +103,14 @@
   .swal2-container { z-index: 10000 !important; }
   .modal-content { background: white; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-sizing: border-box;
     max-height: 90vh; overflow-y: auto; }
+  /* 詳細モーダル右上の✕閉じるボタン */
+  .modal-close-btn {
+    position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    background: #f1f5f9; color: #64748b; border: none; border-radius: 50%;
+    cursor: pointer; transition: all 0.15s ease;
+  }
+  .modal-close-btn:hover { background: #fee2e2; color: #ef4444; }
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; color: #334155; }
   .form-group input, .form-group select, .form-group textarea { width: 100%; box-sizing: border-box; }
@@ -202,10 +213,7 @@
       <span class="material-symbols-outlined">restore_from_trash</span><span>削除済み管理（管理者）</span>
     </button>
     <div style="margin-left:auto; display:flex; align-items:center; gap:6px;">
-      <span id="userDisplayLabel" class="user-pill"></span>
-      <button type="button" id="logoutBtn" class="user-pill user-pill-action" onclick="handleLogout()">
-        <span class="material-symbols-outlined" style="font-size:16px;">logout</span>ログアウト
-      </button>
+      <button type="button" id="userDisplayLabel" class="user-pill user-pill-action" onclick="handleLogout()" title="クリックでログアウト"></button>
     </div>
   </div>
 
@@ -218,20 +226,6 @@
       <button class="btn btn-primary" onclick="openCreateModal()">
         <span class="material-symbols-outlined">add_circle</span> 新規登録
       </button>
-      <div class="dropdown-wrapper" id="bulkActionDropdownWrapper">
-        <button class="btn" style="background:#f1f5f9; color:#334155;" onclick="toggleBulkActionMenu()">
-          <span class="material-symbols-outlined">checklist</span> 選択したファイルの操作
-          <span class="material-symbols-outlined" style="font-size:18px;">expand_more</span>
-        </button>
-        <div id="bulkActionMenu" class="dropdown-menu" style="display:none;">
-          <div class="dropdown-item" onclick="handleZipDownload()">
-            <span class="material-symbols-outlined">download</span> ZIPダウンロード
-          </div>
-          <div class="dropdown-item" style="color:#dc2626;" onclick="handleBulkMoveToTrash()">
-            <span class="material-symbols-outlined">delete</span> ゴミ箱へ移動
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- 初期表示はキーワード検索のみ。他の項目は「絞り込み検索」を押すと展開する -->
@@ -312,7 +306,23 @@
     </div>
   </div>
 
-  <div id="searchCount" style="margin: 0 12px 12px 12px; font-weight: bold; font-size: 16px;"></div>
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin: 0 12px 12px 12px; flex-wrap:nowrap;">
+    <div id="searchCount" style="font-weight: bold; font-size: 15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+    <div class="dropdown-wrapper" id="bulkActionDropdownWrapper" style="flex-shrink:0;">
+      <button class="btn" style="background:#f1f5f9; color:#334155; padding:8px 12px; font-size:13px;" onclick="toggleBulkActionMenu()">
+        <span class="material-symbols-outlined" style="font-size:18px;">checklist</span> 一括操作
+        <span class="material-symbols-outlined" style="font-size:16px;">expand_more</span>
+      </button>
+      <div id="bulkActionMenu" class="dropdown-menu" style="display:none; right:0; left:auto;">
+        <div class="dropdown-item" onclick="handleZipDownload()">
+          <span class="material-symbols-outlined">download</span> ZIPダウンロード
+        </div>
+        <div class="dropdown-item" style="color:#dc2626;" onclick="handleBulkMoveToTrash()">
+          <span class="material-symbols-outlined">delete</span> ゴミ箱へ移動
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- 一覧表示（ヘッダー行付き・横スクロール対応）。ヘッダーと行の列幅は同じgrid-template-columnsで揃える -->
   <div class="file-list-wrapper" style="margin: 0 12px;">
@@ -322,6 +332,7 @@
       <div>状態</div>
       <div>ファイル名</div>
       <div>書類種別</div>
+      <div>タグ</div>
       <div>発行/受領</div>
       <div>取引先</div>
       <div>取引日</div>
@@ -414,8 +425,11 @@
 
 <!-- 詳細確認・確定保存／編集モーダル（S04・S05・S06を統合した簡易版） -->
 <div id="detailModal" class="modal-overlay" style="display:none;">
-  <div class="modal-content" style="max-width:640px;">
-    <h2 id="detailModalTitle" style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;"></h2>
+  <div class="modal-content" style="max-width:640px; position:relative;">
+    <button type="button" class="modal-close-btn" onclick="closeDetailModal()" aria-label="閉じる">
+      <span class="material-symbols-outlined">close</span>
+    </button>
+    <h2 id="detailModalTitle" style="margin-top:0; margin-bottom:16px; margin-right:36px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;"></h2>
 
     <!-- Driveプレビュー（画像・PDF・Office文書すべてDriveの標準プレビューで表示できるため形式分岐は不要） -->
     <div id="detailPreviewArea" style="margin-bottom:16px;"></div>
@@ -474,10 +488,7 @@
         <button type="button" id="detailDeleteBtn" class="btn" style="background:#fee2e2; color:#dc2626;" onclick="handleDeleteFromDetail()">
           <span class="material-symbols-outlined">delete</span> ゴミ箱へ移動
         </button>
-        <div style="display:flex; gap:8px;">
-          <button type="button" class="btn btn-secondary" onclick="closeDetailModal()">閉じる</button>
-          <button type="submit" id="detailSubmitBtn" class="btn btn-success">確定保存</button>
-        </div>
+        <button type="submit" id="detailSubmitBtn" class="btn btn-success">確定保存</button>
       </div>
     </form>
   </div>
@@ -563,22 +574,39 @@
   }
   const storage = safeLocalStorage();
 
-  async function apiCall(action, payload = {}) {
+  /**
+   * GASへのAPI呼び出し。
+   * 外部ドメイン(Vercel)からのfetchは、GAS側の一時的な負荷やリダイレクトの揺らぎ等により
+   * 稀に失敗することがあるため、初回失敗時は少し待ってから1回だけ自動で再試行する。
+   */
+  async function apiCall(action, payload = {}, retryCount = 1) {
     const loginId = storage.getItem('fs_login_id');
     const password = storage.getItem('fs_login_password');
     payload.loginId = loginId;
     payload.password = password;
-    // Vercel(外部ドメイン)からGASへのPOST通信はCORSプリフライトが発生しやすいため、
-    // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
-    const response = await fetch(CONFIG.GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ action: action, payload: payload })
-    });
-    if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
-    const resData = await response.json();
-    if (resData.status === "error") throw new Error(resData.message);
-    return resData.data;
+
+    for (let attempt = 0; attempt <= retryCount; attempt++) {
+      try {
+        // Vercel(外部ドメイン)からGASへのPOST通信はCORSプリフライトが発生しやすいため、
+        // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
+        const response = await fetch(CONFIG.GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ action: action, payload: payload })
+        });
+        if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
+        const resData = await response.json();
+        if (resData.status === "error") throw new Error(resData.message);
+        return resData.data;
+      } catch (err) {
+        if (attempt < retryCount) {
+          console.warn(`API呼び出し失敗。再試行します（action: ${action}）: ${err.message}`);
+          await new Promise(resolve => setTimeout(resolve, 800));
+          continue;
+        }
+        throw err;
+      }
+    }
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
@@ -630,7 +658,7 @@
       // 権限情報を保存（S10・S12など管理者専用画面の表示可否判定に使用）
       storage.setItem('fs_login_userName', loginData.loginUser);
       storage.setItem('fs_login_permission', loginData.permission || "");
-      document.getElementById("userDisplayLabel").textContent = `ログインユーザー: ${loginData.loginUser}`;
+      document.getElementById("userDisplayLabel").textContent = loginData.loginUser;
       // 削除済みファイル管理ボタンは管理者権限を持つユーザーにのみ表示する
       // （サーバー側でも二重チェックしているため、ここは表示制御のみの役割）
       document.getElementById("deletedFilesBtn").style.display = (loginData.permission === "管理者") ? "flex" : "none";
@@ -827,8 +855,10 @@
       const isSelectable = !!record["DriveファイルID"] && !isLocked;
 
       const useTypeLabel = getUseTypeLabel(record["用途種別ID"]);
+      const tagLabels = getTagLabels(record["タグID一覧"]);
       const statusLabel = status === "仮登録" ? (isLocked ? "処理中" : "未") : "済";
       const amountText = record["金額"] ? `¥${Number(record["金額"]).toLocaleString()}` : "";
+      const transactionDateText = formatDateOnly(record["取引日"]);
 
       const row = document.createElement("div");
       row.className = "file-list-grid file-list-row" + (isLocked ? " is-locked" : "");
@@ -838,9 +868,10 @@
         <div><span class="badge-status ${status}">${statusLabel}</span></div>
         <div class="file-list-cell-title">${record["表示名"] || record["ファイル名"] || "（無題）"}</div>
         <div>${useTypeLabel || '<span class="file-list-cell-muted">－</span>'}</div>
+        <div title="${tagLabels.join('、')}">${tagLabels.length > 0 ? tagLabels.join('、') : '<span class="file-list-cell-muted">－</span>'}</div>
         <div>${record["発行受領区分"] || '<span class="file-list-cell-muted">－</span>'}</div>
         <div>${record["取引先"] || '<span class="file-list-cell-muted">－</span>'}</div>
-        <div>${record["取引日"] || '<span class="file-list-cell-muted">－</span>'}</div>
+        <div>${transactionDateText || '<span class="file-list-cell-muted">－</span>'}</div>
         <div class="file-list-cell-amount">${amountText || '<span class="file-list-cell-muted">－</span>'}</div>
         <div>${record["アップロード者"] || '<span class="file-list-cell-muted">－</span>'}</div>
       `;
@@ -860,6 +891,44 @@
     if (!useTypeId) return "";
     const found = allUseTypesCache.find(ut => ut.useTypeId === useTypeId);
     return found ? found.useTypeName : useTypeId;
+  }
+
+  function getTagLabels(tagIdString) {
+    const ids = String(tagIdString || "").split(",").map(s => s.trim()).filter(Boolean);
+    return ids.map(id => {
+      const found = allTagsCache.find(t => t.tagId === id);
+      return found ? found.tagName : id;
+    });
+  }
+
+  /**
+   * 日付のみの値（取引日など）を "yyyy-M-d" 形式で表示用に整形する。
+   * サーバー側で既に "yyyy-MM-dd" 文字列として整形されている想定だが、
+   * 万一 Date オブジェクトや別形式で届いた場合でも崩れずに表示できるよう防御的に処理する。
+   * Dateオブジェクトを経由すると環境のタイムゾーンによって日付がずれる恐れがあるため、
+   * 文字列がすでに yyyy-MM-dd 形式であればDateを経由せずそのまま数値変換のみ行う。
+   */
+  function formatDateOnly(value) {
+    if (!value) return "";
+    const str = String(value);
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      return `${isoMatch[1]}-${Number(isoMatch[2])}-${Number(isoMatch[3])}`;
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? str : `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
+
+  /** <input type="date"> へ安全に値を設定するため、必ず "yyyy-MM-dd"（ゼロ埋め）形式に揃える */
+  function toDateInputValue(value) {
+    if (!value) return "";
+    const str = String(value);
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return "";
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
 
   // =================================================================
@@ -1125,7 +1194,7 @@
     document.getElementById("detailIssuedOrReceived").value = record["発行受領区分"] || "";
     document.getElementById("detailInvoiceRegistrationNumber").value = record["適格事業者登録番号"] || "";
     document.getElementById("detailAmount").value = record["金額"] || "";
-    document.getElementById("detailTransactionDate").value = record["取引日"] || "";
+    document.getElementById("detailTransactionDate").value = toDateInputValue(record["取引日"]);
     document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
     // ゴミ箱への移動は確定済み・確認待ちの両方で許可する（サーバー側でもOCR処理中は拒否される）
     document.getElementById("detailDeleteBtn").style.display = "inline-flex";
