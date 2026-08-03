@@ -8,7 +8,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <base target="_top">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="manifest" href="/file-storage-app.json">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -103,8 +102,15 @@
      これを設定しないと、モーダルを開いた状態で確認ダイアログ/トーストを出した際に
      ダイアログが自作モーダルの後ろに隠れて操作不能になる（実際に発生した不具合の原因）。 */
   .swal2-container { z-index: 10000 !important; }
-  .modal-content { background: white; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-sizing: border-box;
-    max-height: 90vh; overflow-y: auto; }
+  .modal-content {
+    background: white; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-sizing: border-box;
+    max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; position: relative;
+  }
+  /* ヘッダー（タイトル・✕ボタン）は常に固定表示し、本文だけをスクロールさせるモーダル専用の構造。
+     ✕ボタンをスクロール領域の中に置くと、下にスクロールした時に押せなくなってしまうための対策。
+     使用時は .modal-content 側に padding:0 を指定し、ヘッダー/本文それぞれの余白で代替する。 */
+  .modal-header { padding: 24px 32px 0 32px; flex-shrink: 0; }
+  .modal-body { padding: 0 32px 32px 32px; overflow-y: auto; flex: 1 1 auto; }
   /* 詳細モーダル右上の✕閉じるボタン */
   .modal-close-btn {
     position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
@@ -347,13 +353,16 @@
 
 <!-- 新規アップロードモーダル（S03） -->
 <div id="createModal" class="modal-overlay" style="display:none;">
-  <div class="modal-content" style="position:relative;">
-    <button type="button" class="modal-close-btn" onclick="closeCreateModal()" aria-label="閉じる">
-      <span class="material-symbols-outlined">close</span>
-    </button>
-    <h2 style="margin-top:0; margin-bottom:20px; margin-right:36px; color:#1e293b; border-bottom:3px solid var(--success); padding-bottom:10px;">
-      新規ファイル登録
-    </h2>
+  <div class="modal-content" style="padding:0;">
+    <div class="modal-header">
+      <button type="button" class="modal-close-btn" onclick="closeCreateModal()" aria-label="閉じる">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+      <h2 style="margin-top:0; margin-bottom:20px; margin-right:36px; color:#1e293b; border-bottom:3px solid var(--success); padding-bottom:10px;">
+        新規ファイル登録
+      </h2>
+    </div>
+    <div class="modal-body">
     <form id="createForm" onsubmit="handleCreateSubmit(event)">
       <div class="form-group">
         <label>ファイル</label>
@@ -424,16 +433,20 @@
         <button type="submit" class="btn btn-success">登録する</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
 <!-- 詳細確認・確定保存／編集モーダル（S04・S05・S06を統合した簡易版） -->
 <div id="detailModal" class="modal-overlay" style="display:none;">
-  <div class="modal-content" style="max-width:640px; position:relative;">
-    <button type="button" class="modal-close-btn" onclick="closeDetailModal()" aria-label="閉じる">
-      <span class="material-symbols-outlined">close</span>
-    </button>
-    <h2 id="detailModalTitle" style="margin-top:0; margin-bottom:16px; margin-right:36px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;"></h2>
+  <div class="modal-content" style="max-width:640px; padding:0;">
+    <div class="modal-header">
+      <button type="button" class="modal-close-btn" onclick="closeDetailModal()" aria-label="閉じる">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+      <h2 id="detailModalTitle" style="margin-top:0; margin-bottom:16px; margin-right:36px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;"></h2>
+    </div>
+    <div class="modal-body">
 
     <!-- Driveプレビュー（画像・PDF・Office文書すべてDriveの標準プレビューで表示できるため形式分岐は不要） -->
     <div id="detailPreviewArea" style="margin-bottom:16px;"></div>
@@ -495,33 +508,35 @@
         <button type="submit" id="detailSubmitBtn" class="btn btn-success">確定保存</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
 <!-- マスタ管理モーダル（S08・S10統合：タグ／用途種別） -->
 <div id="tagModal" class="modal-overlay" style="display:none;">
   <div class="modal-content">
-    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;">マスタ管理</h2>
+    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px; flex-shrink:0;">マスタ管理</h2>
+    <div class="modal-body" style="padding:0;">
+      <h3 style="font-size:15px; color:#334155;">タグ</h3>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input type="text" id="newTagNameInput" placeholder="新規タグ名を入力">
+        <button class="btn btn-primary" onclick="handleAddTag()">追加</button>
+      </div>
+      <div id="tagListArea"></div>
 
-    <h3 style="font-size:15px; color:#334155;">タグ</h3>
-    <div style="display:flex; gap:8px; margin-bottom:12px;">
-      <input type="text" id="newTagNameInput" placeholder="新規タグ名を入力">
-      <button class="btn btn-primary" onclick="handleAddTag()">追加</button>
-    </div>
-    <div id="tagListArea"></div>
+      <h3 style="font-size:15px; color:#334155; margin-top:24px;">書類種別（見積書・請求書など）</h3>
+      <div style="display:flex; gap:8px; margin-bottom:6px;">
+        <input type="text" id="newUseTypeNameInput" placeholder="書類種別名（例：見積書）" style="flex:1;">
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input type="text" id="newUseTypeKeywordsInput" placeholder="自動判定用キーワード（カンマ区切り・任意）" style="flex:1;">
+        <button class="btn btn-primary" onclick="handleAddUseType()">追加</button>
+      </div>
+      <div id="useTypeListArea"></div>
 
-    <h3 style="font-size:15px; color:#334155; margin-top:24px;">書類種別（見積書・請求書など）</h3>
-    <div style="display:flex; gap:8px; margin-bottom:6px;">
-      <input type="text" id="newUseTypeNameInput" placeholder="書類種別名（例：見積書）" style="flex:1;">
-    </div>
-    <div style="display:flex; gap:8px; margin-bottom:12px;">
-      <input type="text" id="newUseTypeKeywordsInput" placeholder="自動判定用キーワード（カンマ区切り・任意）" style="flex:1;">
-      <button class="btn btn-primary" onclick="handleAddUseType()">追加</button>
-    </div>
-    <div id="useTypeListArea"></div>
-
-    <div style="display:flex; justify-content:flex-end; margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeTagModal()">閉じる</button>
+      <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeTagModal()">閉じる</button>
+      </div>
     </div>
   </div>
 </div>
@@ -529,10 +544,12 @@
 <!-- ゴミ箱画面（S07） -->
 <div id="trashModal" class="modal-overlay" style="display:none;">
   <div class="modal-content">
-    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px;">ゴミ箱（30日以内は復元できます）</h2>
-    <div id="trashListArea"></div>
-    <div style="display:flex; justify-content:flex-end; margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeTrashModal()">閉じる</button>
+    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid var(--primary); padding-bottom:10px; flex-shrink:0;">ゴミ箱（30日以内は復元できます）</h2>
+    <div class="modal-body" style="padding:0;">
+      <div id="trashListArea"></div>
+      <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeTrashModal()">閉じる</button>
+      </div>
     </div>
   </div>
 </div>
@@ -540,10 +557,12 @@
 <!-- 削除済みファイル管理画面（S12・管理者専用） -->
 <div id="deletedFilesModal" class="modal-overlay" style="display:none;">
   <div class="modal-content">
-    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid #dc2626; padding-bottom:10px;">削除済みファイル管理（管理者専用）</h2>
-    <div id="deletedFilesListArea"></div>
-    <div style="display:flex; justify-content:flex-end; margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeDeletedFilesModal()">閉じる</button>
+    <h2 style="margin-top:0; margin-bottom:16px; color:#1e293b; border-bottom:3px solid #dc2626; padding-bottom:10px; flex-shrink:0;">削除済みファイル管理（管理者専用）</h2>
+    <div class="modal-body" style="padding:0;">
+      <div id="deletedFilesListArea"></div>
+      <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeDeletedFilesModal()">閉じる</button>
+      </div>
     </div>
   </div>
 </div>
