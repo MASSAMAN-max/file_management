@@ -599,10 +599,11 @@
 
   /**
    * GASへのAPI呼び出し。
-   * 外部ドメイン(Vercel)からのfetchは、GAS側の一時的な負荷やリダイレクトの揺らぎ等により
-   * 稀に失敗することがあるため、初回失敗時は少し待ってから1回だけ自動で再試行する。
+   * 外部ドメイン(Vercel)からのfetchは、GAS側の一時的な負荷やデプロイ直後の伝播遅延等により
+   * 稀に失敗することがあるため、失敗時は待機時間を段階的に伸ばしながら複数回自動で再試行する
+   * （指数バックオフ：800ms → 1600ms）。
    */
-  async function apiCall(action, payload = {}, retryCount = 1) {
+  async function apiCall(action, payload = {}, retryCount = 2) {
     const loginId = storage.getItem('fs_login_id');
     const password = storage.getItem('fs_login_password');
     payload.loginId = loginId;
@@ -623,8 +624,9 @@
         return resData.data;
       } catch (err) {
         if (attempt < retryCount) {
-          console.warn(`API呼び出し失敗。再試行します（action: ${action}）: ${err.message}`);
-          await new Promise(resolve => setTimeout(resolve, 800));
+          const waitMs = 800 * Math.pow(2, attempt); // 800ms → 1600ms と段階的に伸ばす
+          console.warn(`API呼び出し失敗。${waitMs}ms後に再試行します（action: ${action}, ${attempt + 1}回目）: ${err.message}`);
+          await new Promise(resolve => setTimeout(resolve, waitMs));
           continue;
         }
         throw err;
@@ -686,15 +688,18 @@
       // （サーバー側でも二重チェックしているため、ここは表示制御のみの役割）
       document.getElementById("deletedFilesBtn").style.display = (loginData.permission === "管理者") ? "flex" : "none";
 
-      // ファイル一覧・紐付け情報・タグ／書類種別マスタを1回のAPI呼び出しでまとめて取得する。
-      // 以前は3回の個別呼び出し（Promise.all）にしていたが、呼び出しごとに認証処理が
-      // 重複して走ってしまい速度低下の原因になっていたため、統合エンドポイントに変更した。
+      // ファイル一覧・紐付け情報・タグ／書類種別マスタを取得する（案件管理アプリと同じ
+      // Promise.allによる個別呼び出し方式。統合エンドポイントは廃止した）。
       document.getElementById("loaderText").textContent = "データを読み込み中...";
-      const initialData = await apiCall("loadInitialData");
-      allRecordsCache = initialData.records || [];
-      allLinksCache = initialData.links || [];
-      allTagsCache = initialData.tags || [];
-      allUseTypesCache = initialData.useTypes || [];
+      const [listData, tagData, useTypeData] = await Promise.all([
+        apiCall("loadAllRecords"),
+        apiCall("loadTagMaster"),
+        apiCall("loadUseTypeMaster")
+      ]);
+      allRecordsCache = listData.records || [];
+      allLinksCache = listData.links || [];
+      allTagsCache = tagData.tags || [];
+      allUseTypesCache = useTypeData.useTypes || [];
 
       initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
       initTagFilterSelect();
@@ -998,9 +1003,7 @@
     });
     if (!result.isConfirmed) return;
 
-    const loader = document.getElementById("initLoader");
-    loader.style.display = "flex";
-    document.getElementById("loaderText").textContent = "ZIPを作成中...";
+    showToast("ZIPを作成中...");
 
     try {
       const data = await apiCall("createZipDownload", { fileIds });
@@ -1019,9 +1022,7 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      loader.style.display = "none";
     } catch (err) {
-      loader.style.display = "none";
       Swal.fire({ icon: 'error', title: 'ダウンロードエラー', text: err.message, confirmButtonText: 'OK' });
     }
   };
@@ -1047,15 +1048,12 @@
     });
     if (!result.isConfirmed) return;
 
-    const loader = document.getElementById("initLoader");
-    loader.style.display = "flex";
-    document.getElementById("loaderText").textContent = "ゴミ箱へ移動中...";
+    showToast("ゴミ箱へ移動中...");
 
     try {
       const res = await apiCall("moveMultipleToTrash", { items });
       await refreshRecordsCache();
       search();
-      loader.style.display = "none";
       if (res.failedItems && res.failedItems.length > 0) {
         Swal.fire({
           icon: 'warning',
@@ -1067,7 +1065,6 @@
         showToast(`${res.successCount}件をゴミ箱へ移動しました。`);
       }
     } catch (err) {
-      loader.style.display = "none";
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
     }
   };
@@ -1146,9 +1143,7 @@
       description: document.getElementById("uploadDescription").value.trim()
     };
 
-    const loader = document.getElementById("initLoader");
-    loader.style.display = "flex";
-    document.getElementById("loaderText").textContent = "仮登録中...";
+    showToast("仮登録中...");
 
     try {
       // 【1段目】シートへ仮登録（軽量。base64はまだ送らない）
@@ -1162,9 +1157,8 @@
       await refreshRecordsCache();
       search();
 
-      // 【2段目】Drive保存＋OCR（重い処理。完了を待ってから最新化を促す）
-      document.getElementById("loaderText").textContent = useOcr ? "ファイルを保存し、OCRを実行中です..." : "ファイルを保存中です...";
-      loader.style.display = "flex";
+      // 【2段目】Drive保存＋OCR（重い処理。完了を待ってから最新化する）
+      showToast(useOcr ? "ファイルを保存し、OCRを実行中です..." : "ファイルを保存中です...");
       const base64 = await fileToBase64(file);
       await apiCall("processBackgroundTasks", {
         fData: {
@@ -1173,29 +1167,24 @@
         }
       });
 
-      loader.style.display = "none";
-      // 完了通知は選択式にせず、OK確認のみ。押下後は必ず画面を最新化する。
-      await Swal.fire({
-        icon: 'success',
-        title: '処理が完了しました',
-        confirmButtonText: 'OK',
-        confirmButtonColor: 'var(--primary)'
-      });
+      // 完了通知はダイアログではなくトーストにし、押下操作なしで必ず画面を最新化する。
+      showToast("処理が完了しました。");
       await refreshRecordsCache();
       search();
 
     } catch (err) {
-      loader.style.display = "none";
       Swal.fire({ icon: 'error', title: '登録エラー', text: err.message, confirmButtonText: 'OK' });
     }
   }
 
   async function refreshRecordsCache() {
-    const initialData = await apiCall("loadInitialData");
-    allRecordsCache = initialData.records || [];
-    allLinksCache = initialData.links || [];
-    allTagsCache = initialData.tags || [];
-    allUseTypesCache = initialData.useTypes || [];
+    const [listData, tagData, useTypeData] = await Promise.all([
+      apiCall("loadAllRecords"), apiCall("loadTagMaster"), apiCall("loadUseTypeMaster")
+    ]);
+    allRecordsCache = listData.records || [];
+    allLinksCache = listData.links || [];
+    allTagsCache = tagData.tags || [];
+    allUseTypesCache = useTypeData.useTypes || [];
     initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
     initTagFilterSelect();
   }
@@ -1279,9 +1268,7 @@
     const mode = document.getElementById("detailMode").value; // confirm or update
     const action = (mode === "confirm") ? "confirmRecord" : "updateRecord";
 
-    const loader = document.getElementById("initLoader");
-    loader.style.display = "flex";
-    document.getElementById("loaderText").textContent = (mode === "confirm") ? "確定保存中..." : "更新中...";
+    showToast(mode === "confirm" ? "確定保存中..." : "更新中...");
 
     try {
       await apiCall(action, {
@@ -1300,14 +1287,12 @@
         }
       });
 
-      loader.style.display = "none";
       closeDetailModal();
       showToast(mode === "confirm" ? "確定保存が完了しました。" : "更新しました。");
       await refreshRecordsCache();
       search();
 
     } catch (err) {
-      loader.style.display = "none";
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
     }
   }
@@ -1325,9 +1310,7 @@
     if (!result.isConfirmed) return;
 
     closeDetailModal();
-    const loader = document.getElementById("initLoader");
-    loader.style.display = "flex";
-    document.getElementById("loaderText").textContent = "ゴミ箱へ移動中...";
+    showToast("ゴミ箱へ移動中...");
 
     try {
       await apiCall("moveToTrash", {
@@ -1338,10 +1321,8 @@
       });
       await refreshRecordsCache();
       search();
-      loader.style.display = "none";
       showToast("ゴミ箱へ移動しました。");
     } catch (err) {
-      loader.style.display = "none";
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
     }
   };
