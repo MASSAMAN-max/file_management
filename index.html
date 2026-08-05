@@ -604,6 +604,12 @@
    * 外部ドメイン(Vercel)からのfetchは、GAS側の一時的な負荷やデプロイ直後の伝播遅延等により
    * 稀に失敗することがあるため、失敗時は待機時間を段階的に伸ばしながら複数回自動で再試行する
    * （指数バックオフ：800ms → 1600ms）。
+   *
+   * 【isRedirectFallback対策について】
+   * POSTへの応答がGoogle側の303リダイレクトによりGETへ自動変換され、doGet（疎通確認用の
+   * 固定応答）に届いてしまうことがある。この場合HTTPステータスは200で返るためエラーとは
+   * 判定できないが、中身が本来欲しかったaction（login等）の結果ではないため、
+   * doGet側で付与している isRedirectFallback フラグを見て、意図しない応答と判断しリトライする。
    */
   async function apiCall(action, payload = {}, retryCount = 2) {
     const loginId = storage.getItem('fs_login_id');
@@ -613,20 +619,26 @@
 
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
-        // Vercel(外部ドメイン)からGASへのPOST通信はCORSプリフライトが発生しやすいため、
-        // 名刺管理アプリと同様に Content-Type: text/plain を明示してプリフライトを回避する
         const response = await fetch(CONFIG.GAS_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain" },
           body: JSON.stringify({ action: action, payload: payload })
         });
         if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
+
         const resData = await response.json();
+
+        // POST→GET変換によりdoGetの固定応答を受け取ってしまった場合、
+        // HTTPステータスは200で「一見成功」に見えるため、ここで明示的に弾いてリトライへ回す
+        if (resData.isRedirectFallback) {
+          throw new Error("REDIRECT_FALLBACK:リクエストがリダイレクトにより正しく処理されませんでした。");
+        }
+
         if (resData.status === "error") throw new Error(resData.message);
         return resData.data;
       } catch (err) {
         if (attempt < retryCount) {
-          const waitMs = 800 * Math.pow(2, attempt); // 800ms → 1600ms と段階的に伸ばす
+          const waitMs = 800 * Math.pow(2, attempt);
           console.warn(`API呼び出し失敗。${waitMs}ms後に再試行します（action: ${action}, ${attempt + 1}回目）: ${err.message}`);
           await new Promise(resolve => setTimeout(resolve, waitMs));
           continue;
