@@ -1156,11 +1156,12 @@
     const fileInput = document.getElementById("uploadFileInput");
     const file = fileInput.files[0];
     if (!file) return;
-  
+
     const displayName = document.getElementById("uploadDisplayName").value.trim();
     const useOcr = document.getElementById("uploadUseOcr").checked;
     const links = pendingLinks.map(caseNo => ({ type: "案件", id: caseNo }));
-  
+
+    // アップロード時点で入力された各種データ項目（用途種別・タグ以下は任意入力）
     const entryFields = {
       useTypeId: document.getElementById("uploadUseTypeId").value.trim(),
       tagIds: getCheckedTagIdsIn("uploadTagCheckboxes"),
@@ -1171,30 +1172,23 @@
       transactionDate: document.getElementById("uploadTransactionDate").value,
       description: document.getElementById("uploadDescription").value.trim()
     };
-  
+
     showToast("仮登録中...");
-  
+
     try {
+      // 【1段目】シートへ仮登録（軽量。base64はまだ送らない）
       const createResult = await apiCall("createRecordSheetOnly", {
         fData: Object.assign({ fileName: file.name, mimeType: file.type, displayName: displayName, links: links }, entryFields)
       });
-  
+
       closeCreateModal();
       // 1段階目完了のトーストは、2段階目（Drive保存＋OCR）が終わるまで自動で消さず表示し続ける
       showToast("仮登録が完了しました。バックグラウンド処理中...", true);
+      // 仮登録された状態がすぐ見えるよう、一覧を再取得して反映する
       await refreshRecordsCache();
       search();
-  
-      const base64 = await fileToBase64(file);
-      await apiCall("processBackgroundTasks", {
-        fData: {
-          fileId: createResult.fileId, rowNumber: createResult.rowNumber,
-          base64: base64, mimeType: file.type, fileName: file.name, useOcr: useOcr
-        }
-      });
 
       // 【2段目】Drive保存＋OCR（重い処理。完了を待ってから最新化する）
-      showToast(useOcr ? "ファイルを保存し、OCRを実行中です..." : "ファイルを保存中です...");
       const base64 = await fileToBase64(file);
       await apiCall("processBackgroundTasks", {
         fData: {
@@ -1205,11 +1199,6 @@
 
       // 2段階目が完了したら、表示し続けていた1段階目のトーストを閉じてから完了通知に切り替える
       Swal.close();
-      showToast("処理が完了しました。");
-      await refreshRecordsCache();
-      search();
-
-      // 完了通知はダイアログではなくトーストにし、押下操作なしで必ず画面を最新化する。
       showToast("処理が完了しました。");
       await refreshRecordsCache();
       search();
