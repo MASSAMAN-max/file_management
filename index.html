@@ -372,11 +372,13 @@
         <label style="display:flex; align-items:center; justify-content:space-between; font-weight:normal;">
           <span>OCRでテキストを自動抽出する</span>
           <span class="toggle-switch">
-            <input type="checkbox" id="uploadUseOcr" checked>
+            <input type="checkbox" id="uploadUseOcr" checked onchange="applyUploadOcrLockState()">
             <span class="toggle-slider"></span>
           </span>
         </label>
-        <div style="font-size:12px; color:var(--text-sub); margin-top:2px;">オフにするとOCR処理をスキップします（保存のみ行われます）</div>
+        <div style="font-size:12px; color:var(--text-sub); margin-top:2px;">
+          オンの場合、下の入力欄（発行／受領を除く）はOCR結果で自動入力されるため一時的に無効になります。オフにするとOCR処理をスキップし、手入力できます。
+        </div>
       </div>
       <div class="form-group">
         <label>表示名（空欄の場合はファイル名を使用）</label>
@@ -1069,8 +1071,10 @@
     }
   };
 
-  function showToast(message) {
-    Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: message, showConfirmButton: false, timer: 2500 });
+  function showToast(message, persistent = false) {
+    const options = { toast: true, position: 'top-end', icon: 'info', title: message, showConfirmButton: false };
+    if (!persistent) options.timer = 2500; // persistent=trueの場合はtimerを設定せず、明示的にSwal.close()するまで表示し続ける
+    Swal.fire(options);
   }
 
   // =================================================================
@@ -1084,6 +1088,7 @@
     renderLinkChips();
     renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
     renderTagCheckboxesInto("uploadTagCheckboxes", []);
+    applyUploadOcrLockState(); // ← 追加：モーダルを開いた時点のOCRトグル状態に合わせて入力欄を初期化する
     document.getElementById("createModal").style.display = "flex";
   };
   window.closeCreateModal = function() {
@@ -1100,6 +1105,31 @@
     }
     e.target.value = "";
   });
+
+  // =================================================================
+  // OCR有効時の入力欄ロック制御
+  // OCRが有効な間は「発行／受領」以外の入力欄を無効化し、OCR結果での自動入力と
+  // ユーザー手入力が競合しないようにする。
+  // =================================================================
+  const UPLOAD_OCR_LOCK_TARGET_IDS = [
+    "uploadDisplayName", "uploadUseTypeId", "uploadClient",
+    "uploadInvoiceRegistrationNumber", "uploadAmount",
+    "uploadTransactionDate", "uploadDescription"
+  ];
+  
+  window.applyUploadOcrLockState = function() {
+    const useOcr = document.getElementById("uploadUseOcr").checked;
+  
+    UPLOAD_OCR_LOCK_TARGET_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = useOcr;
+    });
+  
+    // タグは動的生成のチェックボックスのため、生成後にまとめて制御する
+    document.querySelectorAll("#uploadTagCheckboxes input[type=checkbox]").forEach(cb => {
+      cb.disabled = useOcr;
+    });
+  };
 
   function renderLinkChips() {
     const area = document.getElementById("linkChipArea");
@@ -1126,12 +1156,11 @@
     const fileInput = document.getElementById("uploadFileInput");
     const file = fileInput.files[0];
     if (!file) return;
-
+  
     const displayName = document.getElementById("uploadDisplayName").value.trim();
     const useOcr = document.getElementById("uploadUseOcr").checked;
     const links = pendingLinks.map(caseNo => ({ type: "案件", id: caseNo }));
-
-    // アップロード時点で入力された各種データ項目（用途種別・タグ以下は任意入力）
+  
     const entryFields = {
       useTypeId: document.getElementById("uploadUseTypeId").value.trim(),
       tagIds: getCheckedTagIdsIn("uploadTagCheckboxes"),
@@ -1142,20 +1171,27 @@
       transactionDate: document.getElementById("uploadTransactionDate").value,
       description: document.getElementById("uploadDescription").value.trim()
     };
-
+  
     showToast("仮登録中...");
-
+  
     try {
-      // 【1段目】シートへ仮登録（軽量。base64はまだ送らない）
       const createResult = await apiCall("createRecordSheetOnly", {
         fData: Object.assign({ fileName: file.name, mimeType: file.type, displayName: displayName, links: links }, entryFields)
       });
-
+  
       closeCreateModal();
-      showToast("仮登録が完了しました。バックグラウンド処理中...");
-      // 仮登録された状態がすぐ見えるよう、一覧を再取得して反映する
+      // 1段階目完了のトーストは、2段階目（Drive保存＋OCR）が終わるまで自動で消さず表示し続ける
+      showToast("仮登録が完了しました。バックグラウンド処理中...", true);
       await refreshRecordsCache();
       search();
+  
+      const base64 = await fileToBase64(file);
+      await apiCall("processBackgroundTasks", {
+        fData: {
+          fileId: createResult.fileId, rowNumber: createResult.rowNumber,
+          base64: base64, mimeType: file.type, fileName: file.name, useOcr: useOcr
+        }
+      });
 
       // 【2段目】Drive保存＋OCR（重い処理。完了を待ってから最新化する）
       showToast(useOcr ? "ファイルを保存し、OCRを実行中です..." : "ファイルを保存中です...");
@@ -1167,16 +1203,23 @@
         }
       });
 
+      // 2段階目が完了したら、表示し続けていた1段階目のトーストを閉じてから完了通知に切り替える
+      Swal.close();
+      showToast("処理が完了しました。");
+      await refreshRecordsCache();
+      search();
+
       // 完了通知はダイアログではなくトーストにし、押下操作なしで必ず画面を最新化する。
       showToast("処理が完了しました。");
       await refreshRecordsCache();
       search();
 
     } catch (err) {
+      Swal.close(); // 表示し続けている1段階目のトーストが残らないよう、エラー時も必ず閉じる
       Swal.fire({ icon: 'error', title: '登録エラー', text: err.message, confirmButtonText: 'OK' });
     }
   }
-
+  
   async function refreshRecordsCache() {
     const [listData, tagData, useTypeData] = await Promise.all([
       apiCall("loadAllRecords"), apiCall("loadTagMaster"), apiCall("loadUseTypeMaster")
