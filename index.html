@@ -702,14 +702,16 @@
       // （サーバー側でも二重チェックしているため、ここは表示制御のみの役割）
       document.getElementById("deletedFilesBtn").style.display = (loginData.permission === "管理者") ? "flex" : "none";
 
-      // ファイル一覧・紐付け情報・タグ／書類種別マスタを取得する（案件管理アプリと同じ
-      // Promise.allによる個別呼び出し方式。統合エンドポイントは廃止した）。
+      // ファイル一覧・紐付け情報・タグ／書類種別マスタを取得する。
+      // 以前はPromise.allで3本同時にリクエストしていたが、GAS Webアプリは短時間の同時アクセスに弱く、
+      // POST応答がGoogle側の303リダイレクトを経由する際にGETへ変換され、まれに404になる現象が
+      // 複数同時アクセス時に起きやすいことが判明したため、1本ずつ順番に呼び出す方式に変更した。
+      // （読み込み時間は多少延びるが、404の発生頻度を下げることを優先する）
       document.getElementById("loaderText").textContent = "データを読み込み中...";
-      const [listData, tagData, useTypeData] = await Promise.all([
-        apiCall("loadAllRecords"),
-        apiCall("loadTagMaster"),
-        apiCall("loadUseTypeMaster")
-      ]);
+      const listData = await apiCall("loadAllRecords");
+      const tagData = await apiCall("loadTagMaster");
+      const useTypeData = await apiCall("loadUseTypeMaster");
+
       allRecordsCache = listData.records || [];
       allLinksCache = listData.links || [];
       allTagsCache = tagData.tags || [];
@@ -1222,9 +1224,11 @@
   }
   
   async function refreshRecordsCache() {
-    const [listData, tagData, useTypeData] = await Promise.all([
-      apiCall("loadAllRecords"), apiCall("loadTagMaster"), apiCall("loadUseTypeMaster")
-    ]);
+    // initializeAppと同じ理由で、Promise.allの同時呼び出しをやめ1本ずつ順番に呼び出す
+    const listData = await apiCall("loadAllRecords");
+    const tagData = await apiCall("loadTagMaster");
+    const useTypeData = await apiCall("loadUseTypeMaster");
+
     allRecordsCache = listData.records || [];
     allLinksCache = listData.links || [];
     allTagsCache = tagData.tags || [];
