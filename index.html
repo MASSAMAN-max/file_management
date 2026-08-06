@@ -1213,7 +1213,6 @@ window.handleBulkMoveToTrash = async function() {
     const useOcr = document.getElementById("uploadUseOcr").checked;
     const links = pendingLinks.map(caseNo => ({ type: "案件", id: caseNo }));
 
-    // アップロード時点で入力された各種データ項目（用途種別・タグ以下は任意入力）
     const entryFields = {
       useTypeId: document.getElementById("uploadUseTypeId").value.trim(),
       tagIds: getCheckedTagIdsIn("uploadTagCheckboxes"),
@@ -1236,7 +1235,6 @@ window.handleBulkMoveToTrash = async function() {
       closeCreateModal();
       // 1段階目完了のトーストは、2段階目（Drive保存＋OCR）が終わるまで自動で消さず表示し続ける
       showToast("仮登録が完了しました。バックグラウンド処理中...", true);
-      // 仮登録された状態がすぐ見えるよう、一覧を再取得して反映する
       await refreshRecordsCache();
       search();
 
@@ -1251,12 +1249,16 @@ window.handleBulkMoveToTrash = async function() {
 
       // 2段階目が完了したら、表示し続けていた1段階目のトーストを閉じてから完了通知に切り替える
       Swal.close();
-      showToast("処理が完了しました。");
+      // OCR反映後の最新データを一覧に確実に反映する
       await refreshRecordsCache();
       search();
+      showToast("処理が完了しました。");
 
     } catch (err) {
       Swal.close(); // 表示し続けている1段階目のトーストが残らないよう、エラー時も必ず閉じる
+      // エラー時も一覧を最新状態に合わせておく（1段目は成功している可能性があるため）
+      await refreshRecordsCache();
+      search();
       Swal.fire({ icon: 'error', title: '登録エラー', text: err.message, confirmButtonText: 'OK' });
     }
   }
@@ -1354,7 +1356,8 @@ window.handleBulkMoveToTrash = async function() {
     const mode = document.getElementById("detailMode").value; // confirm or update
     const action = (mode === "confirm") ? "confirmRecord" : "updateRecord";
 
-    showToast(mode === "confirm" ? "確定保存中..." : "更新中...");
+    // API呼び出しが終わるまで「処理中」の表示を出し続け、何も反応がないように見えるのを防ぐ
+    showToast(mode === "confirm" ? "確定保存中..." : "更新中...", true);
 
     try {
       await apiCall(action, {
@@ -1374,11 +1377,13 @@ window.handleBulkMoveToTrash = async function() {
       });
 
       closeDetailModal();
-      showToast(mode === "confirm" ? "確定保存が完了しました。" : "更新しました。");
+      Swal.close(); // 表示し続けていた「処理中」トーストを閉じてから完了通知に切り替える
       await refreshRecordsCache();
       search();
+      showToast(mode === "confirm" ? "確定保存が完了しました。" : "更新しました。");
 
     } catch (err) {
+      Swal.close();
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
     }
   }
