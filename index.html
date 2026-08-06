@@ -363,7 +363,7 @@
       </h2>
     </div>
     <div class="modal-body">
-    <form id="createForm" onsubmit="handleCreateSubmit(event)">
+<form id="createForm" onsubmit="handleCreateSubmit(event)">
       <div class="form-group">
         <label>ファイル</label>
         <input type="file" id="uploadFileInput" required>
@@ -377,60 +377,74 @@
           </span>
         </label>
         <div style="font-size:12px; color:var(--text-sub); margin-top:2px;">
-          オンの場合、下の入力欄（発行／受領を除く）はOCR結果で自動入力されるため一時的に無効になります。オフにするとOCR処理をスキップし、手入力できます。
+          オンの場合、書類の内容に関する詳細項目はOCR結果で自動入力されるため折りたたんでおきます。オフにすると開いて手入力できます。
         </div>
       </div>
+
+      <!-- OCRのオン/オフに関わらず常に表示・操作できる項目（発行／受領は必須のためユーザーが必ず選ぶ） -->
       <div class="form-group">
-        <label>表示名（空欄の場合はファイル名を使用）</label>
-        <input type="text" id="uploadDisplayName" placeholder="例：〇〇様邸_見積書">
-      </div>
-      <div class="form-group">
-        <label>紐付け先（案件No・任意・複数可）</label>
-        <div style="display:flex; gap:6px;">
-          <input type="text" id="linkCaseNoInput" placeholder="案件Noを入力してEnter" style="flex:1;">
-        </div>
-        <div id="linkChipArea" style="margin-top:6px;"></div>
-      </div>
-      <div class="form-group">
-        <label>書類種別 <span class="badge-required">必須</span></label>
-        <select id="uploadUseTypeId" required><option value="">未設定（ファイル名から自動判定）</option></select>
+        <label>書類種別</label>
+        <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
       </div>
       <div class="form-group">
         <label>タグ</label>
         <div id="uploadTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
       </div>
-      <div style="display:flex; gap:12px;">
-        <div class="form-group" style="flex:1;">
-          <label>取引先</label>
-          <input type="text" id="uploadClient" placeholder="例：〇〇株式会社">
-        </div>
-        <div class="form-group" style="flex:1;">
-          <label>発行／受領 <span class="badge-required">必須</span></label>
-          <select id="uploadIssuedOrReceived" required>
-            <option value="">選択してください</option>
-            <option value="発行">発行</option>
-            <option value="受領">受領</option>
-          </select>
-        </div>
-      </div>
       <div class="form-group">
-        <label>適格事業者登録番号</label>
-        <input type="text" id="uploadInvoiceRegistrationNumber" placeholder="例：T1234567890123（Tから始まる13桁）">
+        <label>発行／受領 <span class="badge-required">必須</span></label>
+        <select id="uploadIssuedOrReceived" required>
+          <option value="">選択してください</option>
+          <option value="発行">発行</option>
+          <option value="受領">受領</option>
+        </select>
       </div>
-      <div style="display:flex; gap:12px;">
-        <div class="form-group" style="flex:1;">
-          <label>金額</label>
-          <input type="number" id="uploadAmount" placeholder="例：50000">
+
+      <!-- OCRオン時は折りたたみ、OCRオフ時は開いて手入力できる詳細項目 -->
+      <div id="uploadDetailSection" style="border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px; overflow:hidden;">
+        <div id="uploadDetailToggle" onclick="toggleUploadDetailSection()"
+             style="cursor:pointer; background:#f8fafc; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:bold; color:#475569;">
+          <span>詳細項目（表示名・取引先・金額など）</span>
+          <span id="uploadDetailToggleIcon" class="material-symbols-outlined" style="transition:transform 0.2s;">expand_more</span>
         </div>
-        <div class="form-group" style="flex:1;">
-          <label>取引日</label>
-          <input type="date" id="uploadTransactionDate">
+        <div id="uploadDetailBody" style="display:none; padding:16px; border-top:1px solid #e2e8f0;">
+          <div class="form-group">
+            <label>表示名（空欄の場合はファイル名を使用）</label>
+            <input type="text" id="uploadDisplayName" placeholder="例：〇〇様邸_見積書">
+          </div>
+          <div class="form-group">
+            <label>紐付け先（案件No・任意・複数可）</label>
+            <div style="display:flex; gap:6px;">
+              <input type="text" id="linkCaseNoInput" placeholder="案件Noを入力してEnter" style="flex:1;">
+            </div>
+            <div id="linkChipArea" style="margin-top:6px;"></div>
+          </div>
+          <div style="display:flex; gap:12px;">
+            <div class="form-group" style="flex:1;">
+              <label>取引先</label>
+              <input type="text" id="uploadClient" placeholder="例：〇〇株式会社">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>適格事業者登録番号</label>
+            <input type="text" id="uploadInvoiceRegistrationNumber" placeholder="例：T1234567890123（Tから始まる13桁）">
+          </div>
+          <div style="display:flex; gap:12px;">
+            <div class="form-group" style="flex:1;">
+              <label>金額</label>
+              <input type="number" id="uploadAmount" placeholder="例：50000">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>取引日</label>
+              <input type="date" id="uploadTransactionDate">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>説明・備考</label>
+            <textarea id="uploadDescription" rows="2"></textarea>
+          </div>
         </div>
       </div>
-      <div class="form-group">
-        <label>説明・備考</label>
-        <textarea id="uploadDescription" rows="2"></textarea>
-      </div>
+
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:24px;">
         <button type="submit" class="btn btn-success">登録する</button>
       </div>
@@ -1043,10 +1057,9 @@
     }
   };
 
-  window.handleBulkMoveToTrash = async function() {
+window.handleBulkMoveToTrash = async function() {
     document.getElementById("bulkActionMenu").style.display = "none";
 
-    // チェックボックスの data-file-id / data-row-number から選択項目を組み立てる
     const checkedBoxes = Array.from(document.querySelectorAll(".zip-select-checkbox:checked"));
     if (checkedBoxes.length === 0) {
       return showToast("ファイルにチェックを入れてください");
@@ -1064,12 +1077,20 @@
     });
     if (!result.isConfirmed) return;
 
-    showToast("ゴミ箱へ移動中...");
+    // 1段階目：一覧からは即座に消す（サーバー側の処理完了を待たず、UI上の反応を速くする）
+    const movingFileIds = items.map(i => i.fileId);
+    allRecordsCache = allRecordsCache.filter(r => !movingFileIds.includes(r["ファイルID"]));
+    search();
+
+    showToast("ゴミ箱へ移動中...", true); // 2段階目の結果が出るまで表示し続ける
 
     try {
       const res = await apiCall("moveMultipleToTrash", { items });
+      // サーバー側の最終結果で一覧を正として同期し直す（一部失敗していた場合もここで反映される）
       await refreshRecordsCache();
       search();
+
+      Swal.close();
       if (res.failedItems && res.failedItems.length > 0) {
         Swal.fire({
           icon: 'warning',
@@ -1081,6 +1102,10 @@
         showToast(`${res.successCount}件をゴミ箱へ移動しました。`);
       }
     } catch (err) {
+      Swal.close();
+      // 失敗時は一覧の見た目を正しい状態に戻すため再取得する
+      await refreshRecordsCache();
+      search();
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
     }
   };
@@ -1121,23 +1146,41 @@
   });
 
   // =================================================================
-  // OCR有効時の入力欄ロック制御
-  // OCRが有効な間は「発行／受領」以外の入力欄を無効化し、OCR結果での自動入力と
-  // ユーザー手入力が競合しないようにする。
+  // OCR有効時の詳細項目の折りたたみ制御
+  // OCRが有効な間は「書類種別・タグ・発行／受領」以外の詳細項目を折りたたみ、
+  // OCR結果での自動入力とユーザー手入力が競合しないようにする。
+  // OCRが無効な場合は開いた状態にし、手入力できるようにする。
   // =================================================================
-  const UPLOAD_OCR_LOCK_TARGET_IDS = [
-    "uploadDisplayName", "linkCaseNoInput", "uploadClient",
-    "uploadInvoiceRegistrationNumber", "uploadAmount",
-    "uploadTransactionDate", "uploadDescription"
-  ];
-  
   window.applyUploadOcrLockState = function() {
     const useOcr = document.getElementById("uploadUseOcr").checked;
-  
-    UPLOAD_OCR_LOCK_TARGET_IDS.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = useOcr;
-    });
+    setUploadDetailSectionOpen(!useOcr);
+  };
+
+  window.toggleUploadDetailSection = function() {
+    // OCRオン時はユーザーの手動開閉自体を許可しない（自動入力される項目のため）
+    if (document.getElementById("uploadUseOcr").checked) return;
+    const body = document.getElementById("uploadDetailBody");
+    const isOpen = body.style.display !== "none";
+    setUploadDetailSectionOpen(!isOpen);
+  };
+
+  function setUploadDetailSectionOpen(isOpen) {
+    const body = document.getElementById("uploadDetailBody");
+    const icon = document.getElementById("uploadDetailToggleIcon");
+    body.style.display = isOpen ? "block" : "none";
+    icon.style.transform = isOpen ? "rotate(180deg)" : "rotate(0deg)";
+  }
+
+  window.openCreateModal = function() {
+    document.getElementById("createForm").reset();
+    pendingLinks = [];
+    renderLinkChips();
+    renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
+    renderTagCheckboxesInto("uploadTagCheckboxes", []);
+    document.getElementById("uploadUseOcr").checked = true; // モーダルを開くたびOCRオンから開始する
+    applyUploadOcrLockState(); // OCRオン状態に合わせ、詳細項目を折りたたんでおく
+    document.getElementById("createModal").style.display = "flex";
+  };
   
     // タグは動的生成のチェックボックスのため、生成後にまとめて制御する
     document.querySelectorAll("#uploadTagCheckboxes input[type=checkbox]").forEach(cb => {
@@ -1352,25 +1395,40 @@
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#dc2626',
+      confirmButtonText: '移動する',window.handleDeleteFromDetail = async function() {
+    const result = await Swal.fire({
+      title: 'ゴミ箱へ移動しますか？',
+      text: '30日以内であれば復元できます。',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
       confirmButtonText: '移動する',
       cancelButtonText: 'キャンセル'
     });
     if (!result.isConfirmed) return;
 
+    const fileId = document.getElementById("detailFileId").value;
+    const rowNumber = Number(document.getElementById("detailRowNumber").value);
+
     closeDetailModal();
-    showToast("ゴミ箱へ移動中...");
+
+    // 1段階目：一覧からは即座に消す
+    allRecordsCache = allRecordsCache.filter(r => r["ファイルID"] !== fileId);
+    search();
+
+    showToast("ゴミ箱へ移動中...", true); // 2段階目の結果が出るまで表示し続ける
 
     try {
-      await apiCall("moveToTrash", {
-        fData: {
-          fileId: document.getElementById("detailFileId").value,
-          rowNumber: Number(document.getElementById("detailRowNumber").value)
-        }
-      });
+      await apiCall("moveToTrash", { fData: { fileId, rowNumber } });
       await refreshRecordsCache();
       search();
+      Swal.close();
       showToast("ゴミ箱へ移動しました。");
     } catch (err) {
+      Swal.close();
+      // 失敗時は一覧の見た目を正しい状態に戻すため再取得する
+      await refreshRecordsCache();
+      search();
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
     }
   };
