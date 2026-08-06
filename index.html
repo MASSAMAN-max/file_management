@@ -703,33 +703,23 @@
   async function initializeApp() {
     const loader = document.getElementById("initLoader");
     loader.style.display = "flex";
-    document.getElementById("loaderText").textContent = "ログイン認証中...";
+    document.getElementById("loaderText").textContent = "ログイン認証中 & データを読み込み中...";
 
     try {
-      const loginData = await apiCall("login");
+      // ログイン・ファイル一覧・紐付け・タグ／用途種別マスタを1回のリクエストでまとめて取得する。
+      // 以前は4回（login→loadAllRecords→loadTagMaster→loadUseTypeMaster）に分けていたが、
+      // リクエスト回数が多いほどGAS特有の303リダイレクト経由の404が起きやすかったため統合した。
+      const initialData = await apiCall("loadInitialData");
 
-      // 権限情報を保存（S10・S12など管理者専用画面の表示可否判定に使用）
-      storage.setItem('fs_login_userName', loginData.loginUser);
-      storage.setItem('fs_login_permission', loginData.permission || "");
-      document.getElementById("userDisplayLabel").textContent = loginData.loginUser;
-      // 削除済みファイル管理ボタンは管理者権限を持つユーザーにのみ表示する
-      // （サーバー側でも二重チェックしているため、ここは表示制御のみの役割）
-      document.getElementById("deletedFilesBtn").style.display = (loginData.permission === "管理者") ? "flex" : "none";
+      storage.setItem('fs_login_userName', initialData.loginUser);
+      storage.setItem('fs_login_permission', initialData.permission || "");
+      document.getElementById("userDisplayLabel").textContent = initialData.loginUser;
+      document.getElementById("deletedFilesBtn").style.display = (initialData.permission === "管理者") ? "flex" : "none";
 
-      // ファイル一覧・紐付け情報・タグ／書類種別マスタを取得する。
-      // 以前はPromise.allで3本同時にリクエストしていたが、GAS Webアプリは短時間の同時アクセスに弱く、
-      // POST応答がGoogle側の303リダイレクトを経由する際にGETへ変換され、まれに404になる現象が
-      // 複数同時アクセス時に起きやすいことが判明したため、1本ずつ順番に呼び出す方式に変更した。
-      // （読み込み時間は多少延びるが、404の発生頻度を下げることを優先する）
-      document.getElementById("loaderText").textContent = "データを読み込み中...";
-      const listData = await apiCall("loadAllRecords");
-      const tagData = await apiCall("loadTagMaster");
-      const useTypeData = await apiCall("loadUseTypeMaster");
-
-      allRecordsCache = listData.records || [];
-      allLinksCache = listData.links || [];
-      allTagsCache = tagData.tags || [];
-      allUseTypesCache = useTypeData.useTypes || [];
+      allRecordsCache = initialData.records || [];
+      allLinksCache = initialData.links || [];
+      allTagsCache = initialData.tags || [];
+      allUseTypesCache = initialData.useTypes || [];
 
       initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
       initTagFilterSelect();
@@ -1264,15 +1254,13 @@ window.handleBulkMoveToTrash = async function() {
   }
   
   async function refreshRecordsCache() {
-    // initializeAppと同じ理由で、Promise.allの同時呼び出しをやめ1本ずつ順番に呼び出す
-    const listData = await apiCall("loadAllRecords");
-    const tagData = await apiCall("loadTagMaster");
-    const useTypeData = await apiCall("loadUseTypeMaster");
+    // initializeAppと同じ理由で、4回の個別呼び出しではなく loadInitialData 1回にまとめる
+    const initialData = await apiCall("loadInitialData");
 
-    allRecordsCache = listData.records || [];
-    allLinksCache = listData.links || [];
-    allTagsCache = tagData.tags || [];
-    allUseTypesCache = useTypeData.useTypes || [];
+    allRecordsCache = initialData.records || [];
+    allLinksCache = initialData.links || [];
+    allTagsCache = initialData.tags || [];
+    allUseTypesCache = initialData.useTypes || [];
     initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
     initTagFilterSelect();
   }
