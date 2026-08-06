@@ -1181,12 +1181,7 @@ window.handleBulkMoveToTrash = async function() {
     applyUploadOcrLockState(); // OCRオン状態に合わせ、詳細項目を折りたたんでおく
     document.getElementById("createModal").style.display = "flex";
   };
-  
-    // タグは動的生成のチェックボックスのため、生成後にまとめて制御する
-    document.querySelectorAll("#uploadTagCheckboxes input[type=checkbox]").forEach(cb => {
-      cb.disabled = useOcr;
-    });
-  };
+
 
   function renderLinkChips() {
     const area = document.getElementById("linkChipArea");
@@ -1389,13 +1384,6 @@ window.handleBulkMoveToTrash = async function() {
   }
 
   window.handleDeleteFromDetail = async function() {
-    const result = await Swal.fire({
-      title: 'ゴミ箱へ移動しますか？',
-      text: '30日以内であれば復元できます。',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#dc2626',
-      confirmButtonText: '移動する',window.handleDeleteFromDetail = async function() {
     const result = await Swal.fire({
       title: 'ゴミ箱へ移動しますか？',
       text: '30日以内であれば復元できます。',
