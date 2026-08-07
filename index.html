@@ -446,7 +446,7 @@
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:24px;">
-        <button type="submit" class="btn btn-success">登録する</button>
+        <button type="submit" id="createSubmitBtn" class="btn btn-success">登録する</button>
       </div>
     </form>
     </div>
@@ -1117,9 +1117,17 @@ window.handleBulkMoveToTrash = async function() {
     renderLinkChips();
     renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
     renderTagCheckboxesInto("uploadTagCheckboxes", []);
-    applyUploadOcrLockState(); // ← 追加：モーダルを開いた時点のOCRトグル状態に合わせて入力欄を初期化する
+    document.getElementById("uploadUseOcr").checked = true; // モーダルを開くたびOCRオンから開始する
+    applyUploadOcrLockState(); // OCRオン状態に合わせ、詳細項目を折りたたんでおく
+
+    // 前回エラーで「登録中...」のまま残っていた場合に備え、送信ボタンを必ず初期状態に戻す
+    const submitBtn = document.getElementById("createSubmitBtn");
+    submitBtn.disabled = false;
+    submitBtn.textContent = "登録する";
+
     document.getElementById("createModal").style.display = "flex";
   };
+
   window.closeCreateModal = function() {
     document.getElementById("createModal").style.display = "none";
   };
@@ -1193,11 +1201,18 @@ window.handleBulkMoveToTrash = async function() {
     });
   }
 
-  async function handleCreateSubmit(event) {
+async function handleCreateSubmit(event) {
     event.preventDefault();
     const fileInput = document.getElementById("uploadFileInput");
     const file = fileInput.files[0];
     if (!file) return;
+
+    // 二重送信防止：押した瞬間にボタンを無効化する。
+    // モーダルが閉じるのは1段目（仮登録）のAPI応答が返ってきた後のため、
+    // その間の連打による重複登録を防ぐのが目的。
+    const submitBtn = document.getElementById("createSubmitBtn");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "登録中...";
 
     const displayName = document.getElementById("uploadDisplayName").value.trim();
     const useOcr = document.getElementById("uploadUseOcr").checked;
@@ -1250,6 +1265,9 @@ window.handleBulkMoveToTrash = async function() {
       await refreshRecordsCache();
       search();
       Swal.fire({ icon: 'error', title: '登録エラー', text: err.message, confirmButtonText: 'OK' });
+      // 1段目が失敗した場合、モーダルは開いたままなのでボタンを再度押せるように戻す
+      submitBtn.disabled = false;
+      submitBtn.textContent = "登録する";
     }
   }
   
@@ -1284,6 +1302,8 @@ window.handleBulkMoveToTrash = async function() {
     document.getElementById("detailAmount").value = record["金額"] || "";
     document.getElementById("detailTransactionDate").value = toDateInputValue(record["取引日"]);
     document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
+    document.getElementById("detailSubmitBtn").disabled = false; // 前回エラーで無効化されたままの状態を確実に解除する
+    
     // ゴミ箱への移動は確定済み・確認待ちの両方で許可する（サーバー側でもOCR処理中は拒否される）
     document.getElementById("detailDeleteBtn").style.display = "inline-flex";
 
@@ -1339,12 +1359,16 @@ window.handleBulkMoveToTrash = async function() {
     return Array.from(document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)).map(el => el.value);
   }
 
-  async function handleDetailSubmit(event) {
+async function handleDetailSubmit(event) {
     event.preventDefault();
     const mode = document.getElementById("detailMode").value; // confirm or update
     const action = (mode === "confirm") ? "confirmRecord" : "updateRecord";
 
-    // API呼び出しが終わるまで「処理中」の表示を出し続け、何も反応がないように見えるのを防ぐ
+    // 二重送信防止：押した瞬間にボタンを無効化する
+    const submitBtn = document.getElementById("detailSubmitBtn");
+    submitBtn.disabled = true;
+    submitBtn.textContent = mode === "confirm" ? "保存中..." : "更新中...";
+
     showToast(mode === "confirm" ? "確定保存中..." : "更新中...", true);
 
     try {
@@ -1373,6 +1397,9 @@ window.handleBulkMoveToTrash = async function() {
     } catch (err) {
       Swal.close();
       Swal.fire({ icon: 'error', title: 'エラー', text: err.message, confirmButtonText: 'OK' });
+      // 失敗した場合、モーダルは開いたままなのでボタンを再度押せるように戻す
+      submitBtn.disabled = false;
+      submitBtn.textContent = mode === "confirm" ? "確定保存" : "更新する";
     }
   }
 
