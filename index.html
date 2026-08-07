@@ -1169,18 +1169,6 @@ window.handleBulkMoveToTrash = async function() {
     icon.style.transform = isOpen ? "rotate(180deg)" : "rotate(0deg)";
   }
 
-  window.openCreateModal = function() {
-    document.getElementById("createForm").reset();
-    pendingLinks = [];
-    renderLinkChips();
-    renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
-    renderTagCheckboxesInto("uploadTagCheckboxes", []);
-    document.getElementById("uploadUseOcr").checked = true; // モーダルを開くたびOCRオンから開始する
-    applyUploadOcrLockState(); // OCRオン状態に合わせ、詳細項目を折りたたんでおく
-    document.getElementById("createModal").style.display = "flex";
-  };
-
-
   function renderLinkChips() {
     const area = document.getElementById("linkChipArea");
     area.innerHTML = pendingLinks.map(caseNo => `
@@ -1303,7 +1291,7 @@ async function handleCreateSubmit(event) {
     document.getElementById("detailTransactionDate").value = toDateInputValue(record["取引日"]);
     document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
     document.getElementById("detailSubmitBtn").disabled = false; // 前回エラーで無効化されたままの状態を確実に解除する
-    
+
     // ゴミ箱への移動は確定済み・確認待ちの両方で許可する（サーバー側でもOCR処理中は拒否される）
     document.getElementById("detailDeleteBtn").style.display = "inline-flex";
 
