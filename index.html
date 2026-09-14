@@ -619,6 +619,12 @@
    * 稀に失敗することがあるため、失敗時は待機時間を段階的に伸ばしながら複数回自動で再試行する
    * （指数バックオフ：800ms → 1600ms）。
    *
+   * 【タイムアウトについて】
+   * 通信が詰まった場合、fetchは何の応答もないまま長時間待ち続けることがあり、その間
+   * 呼び出し元のボタンが無効化されたまま戻らなくなる恐れがある。
+   * AbortControllerで1回の試行につき20秒でタイムアウトさせ、必ずcatchに落として
+   * リトライ処理（または呼び出し元のエラー処理）へ進めるようにする。
+   *
    * 【isRedirectFallback対策について】
    * POSTへの応答がGoogle側の303リダイレクトによりGETへ自動変換され、doGet（疎通確認用の
    * 固定応答）に届いてしまうことがある。この場合HTTPステータスは200で返るためエラーとは
@@ -632,18 +638,20 @@
     payload.password = password;
 
     for (let attempt = 0; attempt <= retryCount; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒で強制タイムアウト
+
       try {
         const response = await fetch(CONFIG.GAS_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({ action: action, payload: payload })
+          body: JSON.stringify({ action: action, payload: payload }),
+          signal: controller.signal
         });
         if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
 
         const resData = await response.json();
 
-        // POST→GET変換によりdoGetの固定応答を受け取ってしまった場合、
-        // HTTPステータスは200で「一見成功」に見えるため、ここで明示的に弾いてリトライへ回す
         if (resData.isRedirectFallback) {
           throw new Error("REDIRECT_FALLBACK:リクエストがリダイレクトにより正しく処理されませんでした。");
         }
@@ -651,13 +659,18 @@
         if (resData.status === "error") throw new Error(resData.message);
         return resData.data;
       } catch (err) {
+        const isTimeout = err.name === "AbortError";
+        const errMessage = isTimeout ? "タイムアウト:応答がありませんでした。" : err.message;
+
         if (attempt < retryCount) {
           const waitMs = 800 * Math.pow(2, attempt);
-          console.warn(`API呼び出し失敗。${waitMs}ms後に再試行します（action: ${action}, ${attempt + 1}回目）: ${err.message}`);
+          console.warn(`API呼び出し失敗。${waitMs}ms後に再試行します（action: ${action}, ${attempt + 1}回目）: ${errMessage}`);
           await new Promise(resolve => setTimeout(resolve, waitMs));
           continue;
         }
-        throw err;
+        throw new Error(errMessage);
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
   }
@@ -1253,11 +1266,12 @@ async function handleCreateSubmit(event) {
       await refreshRecordsCache();
       search();
       Swal.fire({ icon: 'error', title: '登録エラー', text: err.message, confirmButtonText: 'OK' });
-      // 1段目が失敗した場合、モーダルは開いたままなのでボタンを再度押せるように戻す
+      // ボタンの無効化解除：1段目の失敗時はモーダルが開いたままなので再送信できるようにする。
+      // 2段目（Drive保存・OCR）の失敗時はモーダルは既に閉じているため実害はないが、
+      // 次にモーダルを開く際は openCreateModal 側でも改めて初期化される（二重の安全策）。
       submitBtn.disabled = false;
       submitBtn.textContent = "登録する";
     }
-  }
   
   async function refreshRecordsCache() {
     // initializeAppと同じ理由で、4回の個別呼び出しではなく loadInitialData 1回にまとめる
