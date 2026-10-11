@@ -613,23 +613,79 @@
   }
   const storage = safeLocalStorage();
 
+/**
+ * =====================================================================
+ * ファイル保存アプリ index.html：トークン認証への差し替えコード
+ * =====================================================================
+ * 【使い方】
+ * index.html の <script> 内にある、次の5か所を、このファイルの対応するブロックで置き換える。
+ * 上から順に、「置き換える範囲」の開始行〜終了行をそのまま入れ替えること。
+ * それ以外の部分は変更しない。
+ *
+ *   【1】apiCall            … 「/** GASへのAPI呼び出し。」で始まるコメント2つ（重複している）と、
+ *                              async function apiCall(...) { ... } 全体を、まとめて置き換える
+ *   【2】DOMContentLoaded   … document.addEventListener("DOMContentLoaded", async () => { ... }); 全体
+ *   【3】handleLoginSubmit  … async function handleLoginSubmit(e) { ... } 全体
+ *   【4】initializeApp      … async function initializeApp() { ... } 全体
+ *   【5】handleLogout       … window.handleLogout = async function() { ... }; 全体
+ *
+ * 【変更の要点】
+ *   ・パスワードを端末（localStorage）に保存しない。ログイン直後の最初のリクエストにだけ使い、
+ *     メモリ上から破棄する。以後の通信は、サーバーが発行したログイントークン（fs_login_token）だけで行う。
+ *   ・以前のバージョンが端末に保存していた ID・パスワード（fs_login_id / fs_login_password）は、
+ *     起動時に必ず削除する。
+ *   ・ログインの有効期限切れ（AUTH_EXPIRED）は、再試行せず、再ログインへ誘導する。
+ *   ・ログアウト時は、サーバー側のトークンも失効させる。
+ */
+
+// =====================================================================
+// 【1】apiCall（このブロックの前に、下の変数・関数もあわせて追加する）
+// =====================================================================
+ 
+  // ログイン操作の直後、最初の1回のリクエスト（loadInitialData）にだけ使うID・パスワード。
+  // 端末には保存せず、メモリ上にだけ置く（成功・失敗のいずれでも、initializeApp が破棄する）。
+  let pendingLoginCredentials = null;
+ 
+  // ログインの有効期限切れ（AUTH_EXPIRED）への対応用フラグ。
+  // isAppInitialized … メイン画面を表示済みか（起動時の認証失敗は、initializeApp側のcatchで処理するため区別する）
+  let isAppInitialized = false;
+  let isHandlingAuthExpired = false;
+ 
+  /** 端末に保存しているログイン関連の情報を全て削除する（旧バージョンのID・パスワードも含む） */
+  function clearLoginStorage() {
+    ['fs_login_token', 'fs_login_userName', 'fs_login_permission', 'fs_login_id', 'fs_login_password']
+      .forEach(key => storage.removeItem(key));
+  }
+ 
+  /**
+   * 利用中にログインの有効期限が切れた・無効化された場合の処理。
+   * 保存済みのトークンを破棄し（次に開いた時にログイン画面になる）、案内を出してOKで再読み込みする。
+   * ※ 呼び出し元（保存処理など）も続けて自分のエラー表示を出すことがあるが、SweetAlert2は同時に1つしか
+   *   表示できないため、後から出た同じ趣旨の表示に置き換わるだけで、重なることはない。
+   */
+  async function handleAuthExpired(message) {
+    if (!isAppInitialized || isHandlingAuthExpired) return;
+    isHandlingAuthExpired = true;
+    clearLoginStorage();
+    const result = await Swal.fire({
+      icon: 'info',
+      title: '再ログインが必要です',
+      text: message || 'ログインの有効期限が切れました。再度ログインしてください。',
+      confirmButtonText: 'OK'
+    });
+    if (result.isConfirmed) window.location.reload();
+  }
+ 
   /**
    * GASへのAPI呼び出し。
    * 外部ドメイン(Vercel)からのfetchは、GAS側の一時的な負荷やデプロイ直後の伝播遅延等により
    * 稀に失敗することがあるため、失敗時は待機時間を段階的に伸ばしながら複数回自動で再試行する
    * （指数バックオフ：800ms → 1600ms）。
    *
-   * 【isRedirectFallback対策について】
-   * POSTへの応答がGoogle側の303リダイレクトによりGETへ自動変換され、doGet（疎通確認用の
-   * 固定応答）に届いてしまうことがある。この場合HTTPステータスは200で返るためエラーとは
-   * 判定できないが、中身が本来欲しかったaction（login等）の結果ではないため、
-   * doGet側で付与している isRedirectFallback フラグを見て、意図しない応答と判断しリトライする。
-   */
-  /**
-   * GASへのAPI呼び出し。
-   * 外部ドメイン(Vercel)からのfetchは、GAS側の一時的な負荷やデプロイ直後の伝播遅延等により
-   * 稀に失敗することがあるため、失敗時は待機時間を段階的に伸ばしながら複数回自動で再試行する
-   * （指数バックオフ：800ms → 1600ms）。
+   * 【認証について】
+   * ・ログイントークン（fs_login_token）があれば、トークンだけを送る。
+   * ・トークンが無く、ログイン直後のID・パスワード（pendingLoginCredentials）がある場合だけ、それを送る。
+   * ・認証エラー（AUTH_で始まるcode）は、同じ内容を再送しても結果が変わらないため、再試行しない。
    *
    * 【タイムアウトについて】
    * 通信が詰まった場合、fetchは何の応答もないまま長時間待ち続けることがあり、その間
@@ -644,15 +700,18 @@
    * doGet側で付与している isRedirectFallback フラグを見て、意図しない応答と判断しリトライする。
    */
   async function apiCall(action, payload = {}, retryCount = 2) {
-    const loginId = storage.getItem('fs_login_id');
-    const password = storage.getItem('fs_login_password');
-    payload.loginId = loginId;
-    payload.password = password;
-
+    const token = payload.token || storage.getItem('fs_login_token');
+    if (token) {
+      payload.token = token;
+    } else if (pendingLoginCredentials) {
+      payload.loginId = pendingLoginCredentials.loginId;
+      payload.password = pendingLoginCredentials.password;
+    }
+ 
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒で強制タイムアウト
-
+ 
       try {
         const response = await fetch(CONFIG.GAS_URL, {
           method: "POST",
@@ -661,21 +720,32 @@
           signal: controller.signal
         });
         if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
-
+ 
         const resData = await response.json();
-
+ 
         // POST→GET変換によりdoGetの固定応答を受け取ってしまった場合、
         // HTTPステータスは200で「一見成功」に見えるため、ここで明示的に弾いてリトライへ回す
         if (resData.isRedirectFallback) {
           throw new Error("REDIRECT_FALLBACK:リクエストがリダイレクトにより正しく処理されませんでした。");
         }
-
-        if (resData.status === "error") throw new Error(resData.message);
+ 
+        if (resData.status === "error") {
+          // サーバーが認証エラーの種類（code）を返した場合は、呼び出し側で判別できるよう保持する
+          const businessError = new Error(resData.message);
+          businessError.code = resData.code || "";
+          throw businessError;
+        }
         return resData.data;
       } catch (err) {
+        // 認証エラー：再試行せず、そのまま呼び出し元へ伝える
+        if (typeof err.code === "string" && err.code.startsWith("AUTH_")) {
+          if (err.code === "AUTH_EXPIRED") handleAuthExpired(err.message);
+          throw err;
+        }
+ 
         const isTimeout = err.name === "AbortError";
         const errMessage = isTimeout ? "タイムアウト:応答がありませんでした。" : err.message;
-
+ 
         if (attempt < retryCount) {
           const waitMs = 800 * Math.pow(2, attempt);
           console.warn(`API呼び出し失敗。${waitMs}ms後に再試行します（action: ${action}, ${attempt + 1}回目）: ${errMessage}`);
@@ -689,14 +759,31 @@
     }
   }
 
+
+// =====================================================================
+// 【2】DOMContentLoaded
+// =====================================================================
+ 
   document.addEventListener("DOMContentLoaded", async () => {
     try {
-      const savedId = storage.getItem('fs_login_id');
-      const savedPassword = storage.getItem('fs_login_password');
-      if (savedId && savedPassword) {
+      // 旧バージョンは、ID・パスワードを端末に保存していた。残っている場合は、必ず削除する
+      // （平文のパスワードを端末に残さないため）。削除した場合は、再ログインをお願いする。
+      const hadLegacyCredentials = !!(storage.getItem('fs_login_id') || storage.getItem('fs_login_password'));
+      storage.removeItem('fs_login_id');
+      storage.removeItem('fs_login_password');
+ 
+      if (storage.getItem('fs_login_token')) {
         await initializeApp();
       } else {
         document.getElementById("loginScreen").style.display = "flex";
+        if (hadLegacyCredentials) {
+          Swal.fire({
+            icon: 'info',
+            title: '再ログインをお願いします',
+            text: 'セキュリティ強化のため、お手数ですが、もう一度ログインしてください。',
+            confirmButtonText: '了解'
+          });
+        }
       }
     } catch (e) {
       // ここで捕捉しないと画面が真っ白のまま何も表示されなくなるため、必ずログイン画面は出す
@@ -709,69 +796,78 @@
       }
     }
   });
-
+ 
+// =====================================================================
+// 【3】handleLoginSubmit
+// =====================================================================
+ 
   async function handleLoginSubmit(e) {
     e.preventDefault();
     const id = document.getElementById("loginIdInput").value.trim();
     const pw = document.getElementById("loginPasswordInput").value.trim();
     if (!id || !pw) return Swal.fire({ icon: 'warning', title: 'IDとパスワードを入力してください。' });
-
-    storage.setItem('fs_login_id', id);
-    storage.setItem('fs_login_password', pw);
+ 
+    // ID・パスワードは端末に保存しない。最初のリクエスト（loadInitialData）に付けるため、
+    // メモリ上にだけ一時的に保持する（成功・失敗のいずれでも、initializeApp が破棄する）。
+    pendingLoginCredentials = { loginId: id, password: pw };
     document.getElementById("loginScreen").style.display = "none";
     await initializeApp();
   }
-
-  let allRecordsCache = [];  // data シート全件（アプリ起動時に1回だけ取得）
-  let allLinksCache = [];    // 紐付け管理シート全件
-  let allTagsCache = [];     // タグマスタ全件
-  let allUseTypesCache = []; // 用途種別マスタ全件
-
+ 
+// =====================================================================
+// 【4】initializeApp
+// =====================================================================
+ 
   async function initializeApp() {
     const loader = document.getElementById("initLoader");
     loader.style.display = "flex";
     document.getElementById("loaderText").textContent = "ログイン認証中 & データを読み込み中...";
-
+ 
     try {
       // ログイン・ファイル一覧・紐付け・タグ／用途種別マスタを1回のリクエストでまとめて取得する。
       // 以前は4回（login→loadAllRecords→loadTagMaster→loadUseTypeMaster）に分けていたが、
       // リクエスト回数が多いほどGAS特有の303リダイレクト経由の404が起きやすかったため統合した。
       const initialData = await apiCall("loadInitialData");
-
+ 
+      // ログイン直後であれば、サーバーが新しいログイントークンを返す。これを保存し、
+      // ID・パスワードのメモリ上の保持は直ちに破棄する（以後の通信はトークンだけで行う）。
+      if (initialData.token) storage.setItem('fs_login_token', initialData.token);
+      pendingLoginCredentials = null;
+ 
       storage.setItem('fs_login_userName', initialData.loginUser);
       storage.setItem('fs_login_permission', initialData.permission || "");
       document.getElementById("userDisplayLabel").textContent = initialData.loginUser;
       document.getElementById("deletedFilesBtn").style.display = (initialData.permission === "管理者") ? "flex" : "none";
-
+ 
       allRecordsCache = initialData.records || [];
       allLinksCache = initialData.links || [];
       allTagsCache = initialData.tags || [];
       allUseTypesCache = initialData.useTypes || [];
-
+ 
       initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
       initTagFilterSelect();
-
+ 
       loader.style.display = "none";
       document.getElementById("mainApp").style.display = "block";
+      isAppInitialized = true; // 以後の認証エラーは、handleAuthExpired で処理する
       search(); // 初期表示（絞り込みなしで全件表示）
-
+ 
     } catch (err) {
       loader.style.display = "none";
+      pendingLoginCredentials = null;
+      const isExpired = err.code === 'AUTH_EXPIRED';
       await Swal.fire({
-        title: 'ログインに失敗しました。',
+        title: isExpired ? '再ログインが必要です' : 'ログインに失敗しました。',
         text: err.message,
-        icon: 'error',
+        icon: isExpired ? 'info' : 'error',
         confirmButtonColor: '#ef4444',
         confirmButtonText: 'OK'
       });
-      storage.removeItem('fs_login_id');
-      storage.removeItem('fs_login_password');
-      storage.removeItem('fs_login_userName');
-      storage.removeItem('fs_login_permission');
+      clearLoginStorage();
       window.location.reload();
     }
   }
-
+  
   // フィルタ用ドロップダウンを、取得済みレコードの値から重複なく生成する。
   // 画面にはID(fieldName)ではなく名前を表示する方針のため、labelFnで表示名に変換する。
   function initFilterSelect(elementId, records, fieldName, labelFn) {
@@ -1675,6 +1771,10 @@ async function handleDetailSubmit(event) {
     }
   };
 
+// =====================================================================
+// 【5】handleLogout
+// =====================================================================
+ 
   window.handleLogout = async function() {
     const result = await Swal.fire({
       title: 'ログアウトしますか？',
@@ -1686,10 +1786,21 @@ async function handleDetailSubmit(event) {
       cancelButtonText: 'キャンセル'
     });
     if (result.isConfirmed) {
-      storage.removeItem('fs_login_id');
-      storage.removeItem('fs_login_password');
-      storage.removeItem('fs_login_userName');
-      storage.removeItem('fs_login_permission');
+      // サーバー側のトークンも失効させる（端末から消すだけでは、漏れたトークンが使えてしまうため）。
+      // 直後にページを再読み込みして通信が打ち切られるため、完了を待つ。ただし長く待たせないよう最大3秒まで。
+      // 失敗・時間切れでも、ログアウト自体は続行する（トークンは、期限が来れば無効になる）。
+      const tokenToRevoke = storage.getItem('fs_login_token');
+      if (tokenToRevoke) {
+        try {
+          await Promise.race([
+            apiCall("logout", { token: tokenToRevoke }, 0),
+            new Promise(resolve => setTimeout(resolve, 3000))
+          ]);
+        } catch (revokeErr) {
+          console.error("サーバー側のトークン失効に失敗しました:", revokeErr);
+        }
+      }
+      clearLoginStorage();
       window.location.reload();
     }
   };
