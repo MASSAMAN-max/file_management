@@ -613,6 +613,44 @@
   }
   const storage = safeLocalStorage();
 
+  // =================================================================
+  // 画面表示用の共通ヘルパー
+  // =================================================================
+
+  /**
+   * HTMLに埋め込む文字列をエスケープする。
+   * 表示名・ファイル名・取引先・タグ名などは、ユーザー入力やメール添付のファイル名など外部由来の値で、
+   * そのまま innerHTML に入れるとスクリプトを仕込まれる（XSS）ため、必ずこの関数を通して埋め込む。
+   * （textContent や input.value へ代入する場合は、ブラウザが自動で無害化するため不要）
+   */
+  function escapeHtml(value) {
+    return String(value === null || value === undefined ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  /** 値があればエスケープして表示し、空なら「－」を表示する（一覧の空欄表示用） */
+  function textOrDash(value) {
+    return value ? escapeHtml(value) : '<span class="file-list-cell-muted">－</span>';
+  }
+
+  /**
+   * 一覧内のボタン・×アイコンのクリックを、親要素で1回だけ受け取る。
+   * ボタン側は onclick="関数('${値}')" と書かず、data-id などのデータ属性で対象を渡す。
+   * （onclick の中に値を埋め込むと、値に引用符が含まれた場合に壊れたり、スクリプトを仕込まれたりするため）
+   * @param {string} containerId 親要素のid（中身を描画し直しても、このイベントは維持される）
+   * @param {function(DOMStringMap): void} handler data-* 属性の一覧（dataset）を受け取る関数
+   */
+  function bindListAction(containerId, handler) {
+    document.getElementById(containerId).addEventListener("click", (e) => {
+      const target = e.target.closest("[data-id]");
+      if (target) handler(target.dataset);
+    });
+  }
+
 /**
  * =====================================================================
  * ファイル保存アプリ index.html：トークン認証への差し替えコード
@@ -676,30 +714,68 @@
     if (result.isConfirmed) window.location.reload();
   }
  
+  // 自動で再試行してよいaction（同じリクエストを2回送っても、結果が変わらないもの）。
+  // 「仮登録」「確定保存」「ゴミ箱へ移動」などは、再送すると二重登録や誤エラーの原因になるため含めない。
+  // ※ POSTの応答だけが失敗した場合も、サーバー側の処理は実行済みの可能性がある。
+  const RETRY_SAFE_ACTIONS = new Set([
+    // 読み取りのみ
+    'loadInitialData', 'loadAllRecords', 'loadTagMaster', 'loadUseTypeMaster', 'loadTrashList', 'loadDeletedFiles',
+    // 書き込みだが、2回実行しても結果が同じもの
+    // （同名タグ・種別は既存を返す／削除済みを再削除しても同じ／同じ内容での上書き）
+    'addTag', 'addUseType', 'deleteTag', 'deleteUseType', 'updateRecord'
+  ]);
+
+  // 1回の通信を待つ最長時間（ミリ秒）。時間のかかるactionだけ個別に長くする
+  const DEFAULT_TIMEOUT_MS = 40000;
+  const ACTION_TIMEOUT_MS = {
+    processBackgroundTasks: 200000, // Drive保存＋OCR。GASの実行上限（6分）に収まる範囲で長めに待つ
+    createZipDownload: 120000
+  };
+
+  /**
+   * 通信エラー（サーバーから正常な応答が得られなかった場合）のメッセージを作る。
+   * 再試行できないactionでは、サーバー側で処理が実行済みの可能性があることを伝える。
+   */
+  function buildCommunicationErrorMessage(action, baseMessage) {
+    if (RETRY_SAFE_ACTIONS.has(action) || action === 'logout') return baseMessage;
+    return `${baseMessage}\n処理はサーバー側で実行されている可能性があります。一覧を更新して結果を確認してから、必要であれば再度お試しください。`;
+  }
+
   /**
    * GASへのAPI呼び出し。
+   * @param {string} action 実行するaction名
+   * @param {Object} payload 送信するデータ
+   * @param {{retry?: number, timeoutMs?: number}} options 省略時は action に応じた既定値（下記）を使う
+   *
+   * 【再試行について】
    * 外部ドメイン(Vercel)からのfetchは、GAS側の一時的な負荷やデプロイ直後の伝播遅延等により
-   * 稀に失敗することがあるため、失敗時は待機時間を段階的に伸ばしながら複数回自動で再試行する
-   * （指数バックオフ：800ms → 1600ms）。
+   * 稀に失敗することがあるため、RETRY_SAFE_ACTIONS に含まれるactionだけは、待機時間を段階的に
+   * 伸ばしながら自動で再試行する（指数バックオフ：800ms → 1600ms）。
+   * それ以外（登録・確定・ゴミ箱移動など）は再試行しない。
+   * 以前は全actionを再試行していたため、通信が遅いだけで同じ処理が複数回実行され、
+   * Driveへの二重保存や仮登録の重複、「確定済みのみ…」といった誤エラーを起こしていた。
+   * また、サーバーが「エラー」と判断して返した応答は、再送しても結果が変わらないため再試行しない。
    *
    * 【認証について】
    * ・ログイントークン（fs_login_token）があれば、トークンだけを送る。
    * ・トークンが無く、ログイン直後のID・パスワード（pendingLoginCredentials）がある場合だけ、それを送る。
-   * ・認証エラー（AUTH_で始まるcode）は、同じ内容を再送しても結果が変わらないため、再試行しない。
    *
    * 【タイムアウトについて】
    * 通信が詰まった場合、fetchは何の応答もないまま長時間待ち続けることがあり、その間
    * 呼び出し元のボタンが無効化されたまま戻らなくなる恐れがある。
-   * AbortControllerで1回の試行につき20秒でタイムアウトさせ、必ずcatchに落として
+   * AbortControllerで1回の試行ごとにタイムアウトさせ、必ずcatchに落として
    * リトライ処理（または呼び出し元のエラー処理）へ進めるようにする。
    *
    * 【isRedirectFallback対策について】
    * POSTへの応答がGoogle側の303リダイレクトによりGETへ自動変換され、doGet（疎通確認用の
    * 固定応答）に届いてしまうことがある。この場合HTTPステータスは200で返るためエラーとは
    * 判定できないが、中身が本来欲しかったaction（login等）の結果ではないため、
-   * doGet側で付与している isRedirectFallback フラグを見て、意図しない応答と判断しリトライする。
+   * doGet側で付与している isRedirectFallback フラグを見て、意図しない応答と判断する。
    */
-  async function apiCall(action, payload = {}, retryCount = 2) {
+  async function apiCall(action, payload = {}, options = {}) {
+    const maxRetry = options.retry !== undefined ? options.retry : (RETRY_SAFE_ACTIONS.has(action) ? 2 : 0);
+    const timeoutMs = options.timeoutMs || ACTION_TIMEOUT_MS[action] || DEFAULT_TIMEOUT_MS;
+
     const token = payload.token || storage.getItem('fs_login_token');
     if (token) {
       payload.token = token;
@@ -707,11 +783,11 @@
       payload.loginId = pendingLoginCredentials.loginId;
       payload.password = pendingLoginCredentials.password;
     }
- 
-    for (let attempt = 0; attempt <= retryCount; attempt++) {
+
+    for (let attempt = 0; attempt <= maxRetry; attempt++) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒で強制タイムアウト
- 
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
       try {
         const response = await fetch(CONFIG.GAS_URL, {
           method: "POST",
@@ -720,39 +796,41 @@
           signal: controller.signal
         });
         if (!response.ok) throw new Error(`HTTPエラー! ステータス: ${response.status}`);
- 
+
         const resData = await response.json();
- 
+
         // POST→GET変換によりdoGetの固定応答を受け取ってしまった場合、
-        // HTTPステータスは200で「一見成功」に見えるため、ここで明示的に弾いてリトライへ回す
+        // HTTPステータスは200で「一見成功」に見えるため、ここで明示的にエラー扱いにする
         if (resData.isRedirectFallback) {
           throw new Error("REDIRECT_FALLBACK:リクエストがリダイレクトにより正しく処理されませんでした。");
         }
- 
+
         if (resData.status === "error") {
-          // サーバーが認証エラーの種類（code）を返した場合は、呼び出し側で判別できるよう保持する
-          const businessError = new Error(resData.message);
-          businessError.code = resData.code || "";
-          throw businessError;
+          // サーバーが処理した上で返したエラー。認証エラーの種類（code）は、呼び出し側で判別できるよう保持する
+          const serverError = new Error(resData.message);
+          serverError.code = resData.code || "";
+          serverError.isServerError = true;
+          throw serverError;
         }
         return resData.data;
       } catch (err) {
-        // 認証エラー：再試行せず、そのまま呼び出し元へ伝える
-        if (typeof err.code === "string" && err.code.startsWith("AUTH_")) {
+        // サーバーが返したエラー：再送しても結果は変わらないため、再試行せずそのまま呼び出し元へ伝える
+        if (err.isServerError) {
           if (err.code === "AUTH_EXPIRED") handleAuthExpired(err.message);
           throw err;
         }
- 
+
+        // ここからは通信エラー（タイムアウト・HTTPエラー・リダイレクト失敗など）
         const isTimeout = err.name === "AbortError";
         const errMessage = isTimeout ? "タイムアウト:応答がありませんでした。" : err.message;
- 
-        if (attempt < retryCount) {
+
+        if (attempt < maxRetry) {
           const waitMs = 800 * Math.pow(2, attempt);
           console.warn(`API呼び出し失敗。${waitMs}ms後に再試行します（action: ${action}, ${attempt + 1}回目）: ${errMessage}`);
           await new Promise(resolve => setTimeout(resolve, waitMs));
           continue;
         }
-        throw new Error(errMessage);
+        throw new Error(buildCommunicationErrorMessage(action, errMessage));
       } finally {
         clearTimeout(timeoutId);
       }
@@ -875,7 +953,7 @@
     if (!el) return;
     const values = [...new Set(records.map(r => r[fieldName]).filter(v => v))].sort();
     el.innerHTML = '<option value="">すべて</option>' +
-      values.map(v => `<option value="${v}">${labelFn ? labelFn(v) : v}</option>`).join('');
+      values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(labelFn ? labelFn(v) : v)}</option>`).join('');
   }
 
   // タグ絞り込みは「タグID一覧」がカンマ区切りの複数値のため、initFilterSelectでは扱えない。
@@ -884,7 +962,7 @@
     const el = document.getElementById("filterTag");
     if (!el) return;
     el.innerHTML = '<option value="">すべて</option>' +
-      allTagsCache.map(t => `<option value="${t.tagId}">${t.tagName}</option>`).join('');
+      allTagsCache.map(t => `<option value="${escapeHtml(t.tagId)}">${escapeHtml(t.tagName)}</option>`).join('');
   }
 
   // ===== 検索用テキスト正規化（案件管理アプリと同一ロジック） =====
@@ -923,11 +1001,9 @@
     const nUploader = normalizeText(uploader);
     const linkedFileIds = caseNo ? getFileIdsLinkedToCase(caseNo) : null;
 
-    // 日付範囲は未指定（空欄）であれば全期間を対象とする（デフォルト全期間）
-    const tStart = transactionStart ? new Date(transactionStart) : null;
-    const tEnd = transactionEnd ? endOfDay(new Date(transactionEnd)) : null;
-    const cStart = createdStart ? new Date(createdStart) : null;
-    const cEnd = createdEnd ? endOfDay(new Date(createdEnd)) : null;
+    // 日付範囲は未指定（空欄）であれば全期間を対象とする（デフォルト全期間）。
+    // 日付はすべて「日本時間の日付（yyyy-MM-dd）」の文字列に揃えて比較する。
+    // （new Date("2026-10-18") は UTC の0時＝日本時間9時と解釈されるため、当日の0〜9時が範囲外になってしまう）
 
     return records.filter(r => {
       // 一覧画面にはゴミ箱・削除済みは表示しない（それぞれ専用画面で扱う。設計書3-7）
@@ -945,17 +1021,17 @@
       if (nClient && !normalizeText(r["取引先"]).includes(nClient)) return false;
       if (nUploader && !normalizeText(r["アップロード者"]).includes(nUploader)) return false;
 
-      if (tStart || tEnd) {
-        const tDate = r["取引日"] ? new Date(r["取引日"]) : null;
-        if (!tDate || isNaN(tDate.getTime())) return false;
-        if (tStart && tDate < tStart) return false;
-        if (tEnd && tDate > tEnd) return false;
+      if (transactionStart || transactionEnd) {
+        const tDate = toDateInputValue(r["取引日"]);
+        if (!tDate) return false;
+        if (transactionStart && tDate < transactionStart) return false;
+        if (transactionEnd && tDate > transactionEnd) return false;
       }
-      if (cStart || cEnd) {
-        const cDate = r["作成日時"] ? new Date(r["作成日時"]) : null;
-        if (!cDate || isNaN(cDate.getTime())) return false;
-        if (cStart && cDate < cStart) return false;
-        if (cEnd && cDate > cEnd) return false;
+      if (createdStart || createdEnd) {
+        const cDate = toLocalDateString(r["作成日時"]);
+        if (!cDate) return false;
+        if (createdStart && cDate < createdStart) return false;
+        if (createdEnd && cDate > createdEnd) return false;
       }
 
       if (nKeyword) {
@@ -964,12 +1040,6 @@
       }
       return true;
     });
-  }
-
-  /** 日付の終了側を「その日の23:59:59」にし、当日分を範囲に含める（案件管理アプリと同様の期間指定の考え方） */
-  function endOfDay(date) {
-    date.setHours(23, 59, 59, 999);
-    return date;
   }
 
   window.search = function() {
@@ -1033,18 +1103,19 @@
 
       const row = document.createElement("div");
       row.className = "file-list-grid file-list-row" + (isLocked ? " is-locked" : "");
+      // 表示する値はすべてエスケープして埋め込む（外部由来のファイル名などにスクリプトが含まれていても動かないようにする）
       row.innerHTML = `
-        <div>${isSelectable ? `<input type="checkbox" class="zip-select-checkbox" data-file-id="${record["ファイルID"]}" data-row-number="${record["_rowNumber"]}" onclick="event.stopPropagation()">` : ""}</div>
-        <div class="badge-no">${record["ファイルID"] || ""}</div>
-        <div><span class="badge-status ${status}">${statusLabel}</span></div>
-        <div class="file-list-cell-title">${record["表示名"] || record["ファイル名"] || "（無題）"}</div>
-        <div>${useTypeLabel || '<span class="file-list-cell-muted">－</span>'}</div>
-        <div title="${tagLabels.join('、')}">${tagLabels.length > 0 ? tagLabels.join('、') : '<span class="file-list-cell-muted">－</span>'}</div>
-        <div>${record["発行受領区分"] || '<span class="file-list-cell-muted">－</span>'}</div>
-        <div>${record["取引先"] || '<span class="file-list-cell-muted">－</span>'}</div>
-        <div>${transactionDateText || '<span class="file-list-cell-muted">－</span>'}</div>
-        <div class="file-list-cell-amount">${amountText || '<span class="file-list-cell-muted">－</span>'}</div>
-        <div>${record["アップロード者"] || '<span class="file-list-cell-muted">－</span>'}</div>
+        <div>${isSelectable ? `<input type="checkbox" class="zip-select-checkbox" data-file-id="${escapeHtml(record["ファイルID"])}" data-row-number="${escapeHtml(record["_rowNumber"])}" onclick="event.stopPropagation()">` : ""}</div>
+        <div class="badge-no">${escapeHtml(record["ファイルID"])}</div>
+        <div><span class="badge-status ${escapeHtml(status)}">${statusLabel}</span></div>
+        <div class="file-list-cell-title">${escapeHtml(record["表示名"] || record["ファイル名"] || "（無題）")}</div>
+        <div>${textOrDash(useTypeLabel)}</div>
+        <div title="${escapeHtml(tagLabels.join('、'))}">${textOrDash(tagLabels.join('、'))}</div>
+        <div>${textOrDash(record["発行受領区分"])}</div>
+        <div>${textOrDash(record["取引先"])}</div>
+        <div>${textOrDash(transactionDateText)}</div>
+        <div class="file-list-cell-amount">${textOrDash(amountText)}</div>
+        <div>${textOrDash(record["アップロード者"])}</div>
       `;
       if (!isLocked) {
         row.onclick = () => openDetailModal(record);
@@ -1097,6 +1168,19 @@
     const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
     const d = new Date(str);
+    if (isNaN(d.getTime())) return "";
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  /**
+   * 日時の値（作成日時など。サーバーからはUTC表記の文字列で届く）を、
+   * このブラウザの時間帯（日本時間）での日付 "yyyy-MM-dd" に変換する。
+   * toDateInputValue は日付のみの値用のため、日時の値にはこちらを使う（先頭10文字を切り出すとUTCの日付になりずれる）。
+   */
+  function toLocalDateString(value) {
+    if (!value) return "";
+    const d = new Date(value);
     if (isNaN(d.getTime())) return "";
     const pad = n => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -1165,6 +1249,10 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
+      if (data.skippedCount > 0) {
+        showToast(`${data.skippedCount}件は対象外のため、ZIPに含まれていません。`);
+      }
+
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'ダウンロードエラー', text: err.message, confirmButtonText: 'OK' });
     }
@@ -1208,7 +1296,7 @@ window.handleBulkMoveToTrash = async function() {
         Swal.fire({
           icon: 'warning',
           title: `${res.successCount}件を移動しました（${res.failedItems.length}件失敗）`,
-          html: res.failedItems.map(f => `${f.fileId}: ${f.reason}`).join('<br>'),
+          html: res.failedItems.map(f => `${escapeHtml(f.fileId)}: ${escapeHtml(f.reason)}`).join('<br>'),
           confirmButtonText: 'OK'
         });
       } else {
@@ -1295,9 +1383,10 @@ window.handleBulkMoveToTrash = async function() {
   function renderLinkChips() {
     const area = document.getElementById("linkChipArea");
     area.innerHTML = pendingLinks.map(caseNo => `
-      <span class="link-chip">案件No.${caseNo} <span class="remove" onclick="removeLinkChip('${caseNo}')">×</span></span>
+      <span class="link-chip">案件No.${escapeHtml(caseNo)} <span class="remove" data-id="${escapeHtml(caseNo)}">×</span></span>
     `).join('');
   }
+  bindListAction("linkChipArea", (d) => removeLinkChip(d.id));
   window.removeLinkChip = function(caseNo) {
     pendingLinks = pendingLinks.filter(v => v !== caseNo);
     renderLinkChips();
@@ -1356,7 +1445,7 @@ async function handleCreateSubmit(event) {
 
       // 【2段目】Drive保存＋OCR（重い処理。完了を待ってから最新化する）
       const base64 = await fileToBase64(file);
-      await apiCall("processBackgroundTasks", {
+      const bgResult = await apiCall("processBackgroundTasks", {
         fData: {
           fileId: createResult.fileId, rowNumber: createResult.rowNumber,
           base64: base64, mimeType: file.type, fileName: file.name, useOcr: useOcr
@@ -1368,7 +1457,8 @@ async function handleCreateSubmit(event) {
       // OCR反映後の最新データを一覧に確実に反映する
       await refreshRecordsCache();
       search();
-      showToast("処理が完了しました。");
+      // サーバーが「別の処理が同じファイルを実行中」と判断した場合は、完了したとは言えないため案内を分ける
+      showToast(bgResult.inProgress ? "このファイルは別の処理が実行中です。完了後に一覧を更新してください。" : "処理が完了しました。");
 
     } catch (err) {
       Swal.close(); // 表示し続けている1段階目のトーストが残らないよう、エラー時も必ず閉じる
@@ -1429,7 +1519,7 @@ async function handleCreateSubmit(event) {
     const previewArea = document.getElementById("detailPreviewArea");
     const driveFileId = record["DriveファイルID"];
     previewArea.innerHTML = driveFileId
-      ? `<iframe src="https://drive.google.com/file/d/${driveFileId}/preview" style="width:100%; height:320px; border:1px solid #e2e8f0; border-radius:8px;" allow="autoplay"></iframe>`
+      ? `<iframe src="https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/preview" style="width:100%; height:320px; border:1px solid #e2e8f0; border-radius:8px;" allow="autoplay"></iframe>`
       : '<div style="color:#94a3b8; font-size:13px;">プレビューを表示できません（Drive保存前のファイルです）</div>';
 
     const ocrText = record["OCRテキスト（全文）"];
@@ -1451,7 +1541,7 @@ async function handleCreateSubmit(event) {
   function renderUseTypeSelectInto(selectId, selectedValue, placeholderText) {
     const select = document.getElementById(selectId);
     select.innerHTML = `<option value="">${placeholderText}</option>` +
-      allUseTypesCache.map(ut => `<option value="${ut.useTypeId}">${ut.useTypeName}</option>`).join('');
+      allUseTypesCache.map(ut => `<option value="${escapeHtml(ut.useTypeId)}">${escapeHtml(ut.useTypeName)}</option>`).join('');
     select.value = selectedValue || "";
   }
 
@@ -1461,7 +1551,7 @@ async function handleCreateSubmit(event) {
       ? '<span style="font-size:13px; color:#94a3b8;">タグ未登録です（上部「マスタ管理」から追加できます）</span>'
       : allTagsCache.map(tag => `
           <label style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; padding:4px 10px; border-radius:12px; font-size:13px;">
-            <input type="checkbox" value="${tag.tagId}" ${selectedTagIds.includes(tag.tagId) ? "checked" : ""}> ${tag.tagName}
+            <input type="checkbox" value="${escapeHtml(tag.tagId)}" ${selectedTagIds.includes(tag.tagId) ? "checked" : ""}> ${escapeHtml(tag.tagName)}
           </label>
         `).join('');
   }
@@ -1572,11 +1662,12 @@ async function handleDetailSubmit(event) {
     }
     area.innerHTML = allTagsCache.map(tag => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid #f1f5f9;">
-        <span>${tag.tagName}<span style="color:#94a3b8; font-size:12px; margin-left:8px;">${tag.tagId}</span></span>
-        <button class="btn" style="background:#fee2e2; color:#dc2626; padding:4px 10px; font-size:12px;" onclick="handleDeleteTag('${tag.tagId}')">削除</button>
+        <span>${escapeHtml(tag.tagName)}<span style="color:#94a3b8; font-size:12px; margin-left:8px;">${escapeHtml(tag.tagId)}</span></span>
+        <button class="btn" style="background:#fee2e2; color:#dc2626; padding:4px 10px; font-size:12px;" data-id="${escapeHtml(tag.tagId)}">削除</button>
       </div>
     `).join('');
   }
+  bindListAction("tagListArea", (d) => handleDeleteTag(d.id));
 
   window.handleAddTag = async function() {
     const input = document.getElementById("newTagNameInput");
@@ -1630,11 +1721,12 @@ async function handleDetailSubmit(event) {
     }
     area.innerHTML = allUseTypesCache.map(ut => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid #f1f5f9;">
-        <span>${ut.useTypeName}<span style="color:#94a3b8; font-size:12px; margin-left:8px;">${ut.useTypeId}${ut.keywords ? " / キーワード: " + ut.keywords : ""}</span></span>
-        <button class="btn" style="background:#fee2e2; color:#dc2626; padding:4px 10px; font-size:12px;" onclick="handleDeleteUseType('${ut.useTypeId}')">削除</button>
+        <span>${escapeHtml(ut.useTypeName)}<span style="color:#94a3b8; font-size:12px; margin-left:8px;">${escapeHtml(ut.useTypeId)}${ut.keywords ? escapeHtml(" / キーワード: " + ut.keywords) : ""}</span></span>
+        <button class="btn" style="background:#fee2e2; color:#dc2626; padding:4px 10px; font-size:12px;" data-id="${escapeHtml(ut.useTypeId)}">削除</button>
       </div>
     `).join('');
   }
+  bindListAction("useTypeListArea", (d) => handleDeleteUseType(d.id));
 
   window.handleAddUseType = async function() {
     const nameInput = document.getElementById("newUseTypeNameInput");
@@ -1688,7 +1780,7 @@ async function handleDetailSubmit(event) {
       const data = await apiCall("loadTrashList");
       renderTrashList(data.trashList || []);
     } catch (err) {
-      document.getElementById("trashListArea").innerHTML = `<p style="color:#dc2626;">${err.message}</p>`;
+      document.getElementById("trashListArea").innerHTML = `<p style="color:#dc2626;">${escapeHtml(err.message)}</p>`;
     }
   };
   window.closeTrashModal = function() {
@@ -1704,13 +1796,14 @@ async function handleDetailSubmit(event) {
     area.innerHTML = trashList.map(r => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid #f1f5f9;">
         <div>
-          <div style="font-weight:bold;">${r["表示名"] || r["ファイル名"]}</div>
-          <div style="font-size:12px; color:#94a3b8;">残り${r["残り日数"]}日で自動的に完全削除されます</div>
+          <div style="font-weight:bold;">${escapeHtml(r["表示名"] || r["ファイル名"])}</div>
+          <div style="font-size:12px; color:#94a3b8;">残り${escapeHtml(r["残り日数"])}日で自動的に完全削除されます</div>
         </div>
-        <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" onclick="handleRestoreFromTrash('${r["ファイルID"]}', ${r["_rowNumber"]})">復元</button>
+        <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" data-id="${escapeHtml(r["ファイルID"])}" data-row="${escapeHtml(r["_rowNumber"])}">復元</button>
       </div>
     `).join('');
   }
+  bindListAction("trashListArea", (d) => handleRestoreFromTrash(d.id, Number(d.row)));
 
   window.handleRestoreFromTrash = async function(fileId, rowNumber) {
     document.getElementById("trashListArea").innerHTML = "復元中...";
@@ -1736,7 +1829,7 @@ async function handleDetailSubmit(event) {
       const data = await apiCall("loadDeletedFiles");
       renderDeletedFilesList(data.deletedFiles || []);
     } catch (err) {
-      document.getElementById("deletedFilesListArea").innerHTML = `<p style="color:#dc2626;">${err.message}</p>`;
+      document.getElementById("deletedFilesListArea").innerHTML = `<p style="color:#dc2626;">${escapeHtml(err.message)}</p>`;
     }
   };
   window.closeDeletedFilesModal = function() {
@@ -1751,11 +1844,12 @@ async function handleDetailSubmit(event) {
     }
     area.innerHTML = deletedFiles.map(r => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid #f1f5f9;">
-        <div style="font-weight:bold;">${r["表示名"] || r["ファイル名"]}</div>
-        <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" onclick="handleRestoreDeletedFile('${r["ファイルID"]}', ${r["_rowNumber"]})">復元</button>
+        <div style="font-weight:bold;">${escapeHtml(r["表示名"] || r["ファイル名"])}</div>
+        <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" data-id="${escapeHtml(r["ファイルID"])}" data-row="${escapeHtml(r["_rowNumber"])}">復元</button>
       </div>
     `).join('');
   }
+  bindListAction("deletedFilesListArea", (d) => handleRestoreDeletedFile(d.id, Number(d.row)));
 
   window.handleRestoreDeletedFile = async function(fileId, rowNumber) {
     document.getElementById("deletedFilesListArea").innerHTML = "復元中...";
@@ -1793,7 +1887,7 @@ async function handleDetailSubmit(event) {
       if (tokenToRevoke) {
         try {
           await Promise.race([
-            apiCall("logout", { token: tokenToRevoke }, 0),
+            apiCall("logout", { token: tokenToRevoke }),
             new Promise(resolve => setTimeout(resolve, 3000))
           ]);
         } catch (revokeErr) {
