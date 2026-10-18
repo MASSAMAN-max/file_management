@@ -398,6 +398,12 @@
           <option value="受領">受領</option>
         </select>
       </div>
+      <!-- 案件Noの紐付けはOCRで自動入力される項目ではないため、OCRのオン/オフに関わらず常に入力できる -->
+      <div class="form-group">
+        <label>紐付け先（案件No・任意・複数可）</label>
+        <input type="text" id="linkCaseNoInput" placeholder="案件Noを入力してEnter">
+        <div id="linkChipArea" style="margin-top:6px;"></div>
+      </div>
 
       <!-- OCRオン時は折りたたみ、OCRオフ時は開いて手入力できる詳細項目 -->
       <div id="uploadDetailSection" style="border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px; overflow:hidden;">
@@ -410,13 +416,6 @@
           <div class="form-group">
             <label>表示名（空欄の場合はファイル名を使用）</label>
             <input type="text" id="uploadDisplayName" placeholder="例：〇〇様邸_見積書">
-          </div>
-          <div class="form-group">
-            <label>紐付け先（案件No・任意・複数可）</label>
-            <div style="display:flex; gap:6px;">
-              <input type="text" id="linkCaseNoInput" placeholder="案件Noを入力してEnter" style="flex:1;">
-            </div>
-            <div id="linkChipArea" style="margin-top:6px;"></div>
           </div>
           <div style="display:flex; gap:12px;">
             <div class="form-group" style="flex:1;">
@@ -484,6 +483,11 @@
       <div class="form-group">
         <label>タグ</label>
         <div id="detailTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
+      <div class="form-group">
+        <label>紐付け先（案件No・複数可）</label>
+        <input type="text" id="detailLinkCaseNoInput" placeholder="案件Noを入力してEnter">
+        <div id="detailLinkChipArea" style="margin-top:6px;"></div>
       </div>
       <div style="display:flex; gap:12px;">
         <div class="form-group" style="flex:1;">
@@ -1320,11 +1324,12 @@ window.handleBulkMoveToTrash = async function() {
   // =================================================================
   // 新規登録（S03）：仮登録→OCR反映→確定保存フロー（設計書9章）
   // =================================================================
-  let pendingLinks = []; // モーダル内で追加された紐付け先（案件No）を一時保持
+  let pendingLinks = []; // 登録モーダル内で追加された紐付け先（案件No）を一時保持
+  let detailLinks = [];  // 詳細モーダルで編集中の紐付け先（案件No）。「確定保存／更新」で保存される
 
   window.openCreateModal = function() {
     document.getElementById("createForm").reset();
-    pendingLinks = [];
+    pendingLinks.length = 0; // 一覧の中身だけを空にする（Enterキー・×ボタンの処理が同じ配列を参照し続けるため）
     renderLinkChips();
     renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
     renderTagCheckboxesInto("uploadTagCheckboxes", []);
@@ -1343,16 +1348,44 @@ window.handleBulkMoveToTrash = async function() {
     document.getElementById("createModal").style.display = "none";
   };
 
-  document.getElementById("linkCaseNoInput")?.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    const value = e.target.value.trim();
-    if (value && !pendingLinks.includes(value)) {
-      pendingLinks.push(value);
-      renderLinkChips();
+  // =================================================================
+  // 案件Noの入力欄（登録モーダル・詳細モーダルで共通）
+  // =================================================================
+
+  /** 入力欄に書かれた案件Noを一覧へ追加し、チップ表示を更新して、入力欄を空にする */
+  function commitCaseNoInput(inputId, list, renderFn) {
+    const input = document.getElementById(inputId);
+    const value = input.value.trim();
+    if (value && !list.includes(value)) {
+      list.push(value);
+      renderFn();
     }
-    e.target.value = "";
-  });
+    input.value = "";
+  }
+
+  /** 案件Noの入力欄で Enter を押したら一覧へ追加する（フォームの送信は止める） */
+  function bindCaseNoInput(inputId, list, renderFn) {
+    document.getElementById(inputId)?.addEventListener("keydown", (e) => {
+      // 日本語入力の変換を確定するEnterでは、追加しない
+      if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      commitCaseNoInput(inputId, list, renderFn);
+    });
+  }
+
+  /** 案件Noのチップ（×で削除できる）を描画する */
+  function renderCaseChips(areaId, list) {
+    document.getElementById(areaId).innerHTML = list.map(caseNo => `
+      <span class="link-chip">案件No.${escapeHtml(caseNo)} <span class="remove" data-id="${escapeHtml(caseNo)}">×</span></span>
+    `).join('');
+  }
+
+  function removeFromList(list, value) {
+    const index = list.indexOf(value);
+    if (index >= 0) list.splice(index, 1);
+  }
+
+  bindCaseNoInput("linkCaseNoInput", pendingLinks, () => renderLinkChips());
 
   // =================================================================
   // OCR有効時の詳細項目の折りたたみ制御
@@ -1381,16 +1414,12 @@ window.handleBulkMoveToTrash = async function() {
   }
 
   function renderLinkChips() {
-    const area = document.getElementById("linkChipArea");
-    area.innerHTML = pendingLinks.map(caseNo => `
-      <span class="link-chip">案件No.${escapeHtml(caseNo)} <span class="remove" data-id="${escapeHtml(caseNo)}">×</span></span>
-    `).join('');
+    renderCaseChips("linkChipArea", pendingLinks);
   }
-  bindListAction("linkChipArea", (d) => removeLinkChip(d.id));
-  window.removeLinkChip = function(caseNo) {
-    pendingLinks = pendingLinks.filter(v => v !== caseNo);
+  bindListAction("linkChipArea", (d) => {
+    removeFromList(pendingLinks, d.id);
     renderLinkChips();
-  };
+  });
 
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -1416,6 +1445,7 @@ async function handleCreateSubmit(event) {
 
     const displayName = document.getElementById("uploadDisplayName").value.trim();
     const useOcr = document.getElementById("uploadUseOcr").checked;
+    commitCaseNoInput("linkCaseNoInput", pendingLinks, renderLinkChips); // Enterを押さずに登録した場合も取りこぼさない
     const links = pendingLinks.map(caseNo => ({ type: "案件", id: caseNo }));
 
     const entryFields = {
@@ -1515,6 +1545,18 @@ async function handleCreateSubmit(event) {
     const currentTagIds = String(record["タグID一覧"] || "").split(",").map(s => s.trim()).filter(Boolean);
     renderTagCheckboxesInto("detailTagCheckboxes", currentTagIds);
 
+    // 案件Noの紐付け：取得済みの紐付け情報から、このファイルの「案件」の紐付けを取り出して表示する
+    // （「ファイル」種別＝関連資料の紐付けは、ここでは扱わない）
+    detailLinks.length = 0;
+    allLinksCache
+      .filter(link => link["紐付け先種別"] === "案件" && String(link["ファイルID"]) === String(record["ファイルID"]))
+      .forEach(link => {
+        const caseNo = String(link["紐付け先ID"]).trim();
+        if (caseNo && !detailLinks.includes(caseNo)) detailLinks.push(caseNo);
+      });
+    document.getElementById("detailLinkCaseNoInput").value = "";
+    renderDetailLinkChips();
+
     // Driveプレビュー（画像・PDF・Office文書いずれもDriveの標準プレビューiframeで表示可能）
     const previewArea = document.getElementById("detailPreviewArea");
     const driveFileId = record["DriveファイルID"];
@@ -1530,6 +1572,14 @@ async function handleCreateSubmit(event) {
 
     document.getElementById("detailModal").style.display = "flex";
   };
+  function renderDetailLinkChips() {
+    renderCaseChips("detailLinkChipArea", detailLinks);
+  }
+  bindCaseNoInput("detailLinkCaseNoInput", detailLinks, renderDetailLinkChips);
+  bindListAction("detailLinkChipArea", (d) => {
+    removeFromList(detailLinks, d.id);
+    renderDetailLinkChips();
+  });
   window.closeDetailModal = function() {
     document.getElementById("detailModal").style.display = "none";
   };
@@ -1565,6 +1615,8 @@ async function handleDetailSubmit(event) {
     const mode = document.getElementById("detailMode").value; // confirm or update
     const action = (mode === "confirm") ? "confirmRecord" : "updateRecord";
 
+    commitCaseNoInput("detailLinkCaseNoInput", detailLinks, renderDetailLinkChips); // Enterを押さずに保存した場合も取りこぼさない
+
     // 二重送信防止：押した瞬間にボタンを無効化する
     const submitBtn = document.getElementById("detailSubmitBtn");
     submitBtn.disabled = true;
@@ -1585,7 +1637,8 @@ async function handleDetailSubmit(event) {
           invoiceRegistrationNumber: document.getElementById("detailInvoiceRegistrationNumber").value.trim(),
           amount: document.getElementById("detailAmount").value.trim(),
           transactionDate: document.getElementById("detailTransactionDate").value,
-          description: document.getElementById("detailDescription").value.trim()
+          description: document.getElementById("detailDescription").value.trim(),
+          caseNos: detailLinks.slice() // サーバー側で、このファイルの案件の紐付けをこの一覧と同じ状態にそろえる
         }
       });
 
@@ -1797,7 +1850,7 @@ async function handleDetailSubmit(event) {
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid #f1f5f9;">
         <div>
           <div style="font-weight:bold;">${escapeHtml(r["表示名"] || r["ファイル名"])}</div>
-          <div style="font-size:12px; color:#94a3b8;">残り${escapeHtml(r["残り日数"])}日で自動的に完全削除されます</div>
+          <div style="font-size:12px; color:#94a3b8;">残り${escapeHtml(r["残り日数"])}日で「削除済み」へ移動します（以降は管理者のみ復元できます）</div>
         </div>
         <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" data-id="${escapeHtml(r["ファイルID"])}" data-row="${escapeHtml(r["_rowNumber"])}">復元</button>
       </div>
