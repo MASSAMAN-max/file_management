@@ -31,6 +31,16 @@ function escapeHtml(value) {
 }
 
 /** 値があればエスケープして表示し、空なら「－」を表示する（一覧の空欄表示用） */
+/**
+ * DriveファイルURLから、DriveのファイルIDを取り出す（サーバー側 extractDriveFileId_ と同じ規則）。
+ * 例：https://drive.google.com/file/d/〇〇/view?usp=drivesdk → 〇〇
+ * @return {string} ファイルID（URLが空・形式が違う場合は空文字）
+ */
+function extractDriveFileId(url) {
+  const match = String(url || "").match(/\/d\/([^\/?#]+)/);
+  return match ? match[1] : "";
+}
+
 function textOrDash(value) {
   return value ? escapeHtml(value) : '<span class="file-list-cell-muted">－</span>';
 }
