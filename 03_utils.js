@@ -188,6 +188,75 @@ function removeFromList(list, value) {
 }
 
 // =================================================================
+// 税率・金額（税抜／税込）の入力欄（登録モーダル・詳細モーダルで共通）
+// 計算規則はサーバー側（08_ファイル情報管理.js の buildAmountFields_）と同じ：
+//   ・1円未満は切り捨て　・不課税は税率0%扱い
+// 最後に入力した金額欄を基準に、もう一方を自動計算する（基準は税率欄の data-base に保持）。
+// =================================================================
+const TAX_RATE_NON_TAXABLE = "不課税";
+const DEFAULT_TAX_RATE = "10"; // 税率の初期値（%）
+
+/** 整数同士の割り算の商（切り捨て） */
+function floorDiv(dividend, divisor) {
+  return (dividend - (dividend % divisor)) / divisor;
+}
+
+/** 入力欄の文字列を整数（円）にする。空・不正な値・負の値は null */
+function parseAmountInput(text) {
+  const trimmed = String(text === null || text === undefined ? "" : text).trim();
+  if (trimmed === "") return null;
+  const num = Number(trimmed);
+  return isFinite(num) && num >= 0 ? Math.floor(num) : null;
+}
+
+/** 税率欄の値（"不課税" または "1"〜"10"）を、計算用の％の数値にする */
+function taxRateToPercent(rateValue) {
+  return rateValue === TAX_RATE_NON_TAXABLE ? 0 : Number(rateValue);
+}
+
+/** 基準にした金額欄の値から、もう一方の金額欄を計算して入れる */
+function recalcTaxAmounts(rateEl, exclEl, inclEl) {
+  const percent = taxRateToPercent(rateEl.value);
+  if (rateEl.dataset.base === "excl") {
+    const excl = parseAmountInput(exclEl.value);
+    inclEl.value = excl === null ? "" : floorDiv(excl * (100 + percent), 100);
+  } else {
+    const incl = parseAmountInput(inclEl.value);
+    exclEl.value = incl === null ? "" : floorDiv(incl * 100, 100 + percent);
+  }
+}
+
+/** 税率リストを作り、入力・変更時の自動計算を紐付ける（画面の読み込み時に1回だけ呼ぶ） */
+function bindTaxInputs(rateId, exclId, inclId) {
+  const rateEl = document.getElementById(rateId);
+  const exclEl = document.getElementById(exclId);
+  const inclEl = document.getElementById(inclId);
+
+  const rates = [TAX_RATE_NON_TAXABLE, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+  rateEl.innerHTML = rates.map(r => `<option value="${r}">${r === TAX_RATE_NON_TAXABLE ? r : r + "%"}</option>`).join("");
+  rateEl.value = DEFAULT_TAX_RATE;
+  rateEl.dataset.base = "incl";
+
+  exclEl.addEventListener("input", () => { rateEl.dataset.base = "excl"; recalcTaxAmounts(rateEl, exclEl, inclEl); });
+  inclEl.addEventListener("input", () => { rateEl.dataset.base = "incl"; recalcTaxAmounts(rateEl, exclEl, inclEl); });
+  rateEl.addEventListener("change", () => recalcTaxAmounts(rateEl, exclEl, inclEl));
+}
+
+/**
+ * モーダルを開くときに、税率・金額の3項目へ保存済みの値を入れる（再計算はしない）。
+ * 税率が空・リストにない値のときは10%にする。基準の金額欄は税込に戻す。
+ */
+function setTaxInputValues(rateId, exclId, inclId, taxRate, amountExcl, amountIncl) {
+  const rateEl = document.getElementById(rateId);
+  const rateText = String(taxRate === null || taxRate === undefined ? "" : taxRate).trim();
+  rateEl.value = rateText;
+  if (rateEl.value !== rateText || rateText === "") rateEl.value = DEFAULT_TAX_RATE; // リストにない値は選択できないため
+  rateEl.dataset.base = "incl";
+  document.getElementById(exclId).value = (amountExcl === null || amountExcl === undefined) ? "" : amountExcl;
+  document.getElementById(inclId).value = (amountIncl === null || amountIncl === undefined) ? "" : amountIncl;
+}
+
+// =================================================================
 // 用途種別セレクト／タグチェックボックスの共通描画処理
 // （アップロードモーダル・詳細モーダルの双方から呼び出す。二重管理を避けるため共通化）
 // =================================================================
