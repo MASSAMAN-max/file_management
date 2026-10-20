@@ -175,7 +175,7 @@ function displayResults(records) {
     // 仮登録×OCR処理中の間は編集不可（設計書9-2）。一覧上はロック表示にしてクリックを無効化する
     const isLocked = (status === "仮登録" && ocrStatus === "処理中");
     // OCR処理中（ロック中）はDriveファイルが既にアップロード済みでも選択対象から外す
-    const isSelectable = !!record["DriveファイルID"] && !isLocked;
+    const isSelectable = !!extractDriveFileId(record["DriveファイルURL"]) && !isLocked;
 
     const useTypeLabel = getUseTypeLabel(record["用途種別ID"]);
     const tagLabels = getTagLabels(record["タグID一覧"]);
