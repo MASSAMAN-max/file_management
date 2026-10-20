@@ -151,29 +151,8 @@ function showToast(message, persistent = false) {
 }
 
 // =================================================================
-// 案件Noの入力欄（登録モーダル・詳細モーダルで共通）
+// 案件Noの変換（data シートの「案件No」列の文字列 → 配列）。選択部品は 10_project_picker.js
 // =================================================================
-
-/** 入力欄に書かれた案件Noを一覧へ追加し、チップ表示を更新して、入力欄を空にする */
-function commitCaseNoInput(inputId, list, renderFn) {
-  const input = document.getElementById(inputId);
-  const value = input.value.trim();
-  if (value && !list.includes(value)) {
-    list.push(value);
-    renderFn();
-  }
-  input.value = "";
-}
-
-/** 案件Noの入力欄で Enter を押したら一覧へ追加する（フォームの送信は止める） */
-function bindCaseNoInput(inputId, list, renderFn) {
-  document.getElementById(inputId)?.addEventListener("keydown", (e) => {
-    // 日本語入力の変換を確定するEnterでは、追加しない
-    if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
-    e.preventDefault();
-    commitCaseNoInput(inputId, list, renderFn);
-  });
-}
 
 /**
  * data シートの「案件No」列の値（カンマ区切り。例："12,15"）を、案件Noの配列にする。
@@ -186,18 +165,6 @@ function parseCaseNos(value) {
     if (caseNo && !list.includes(caseNo)) list.push(caseNo);
   });
   return list;
-}
-
-/** 案件Noのチップ（×で削除できる）を描画する */
-function renderCaseChips(areaId, list) {
-  document.getElementById(areaId).innerHTML = list.map(caseNo => `
-    <span class="link-chip">案件No.${escapeHtml(caseNo)} <span class="remove" data-id="${escapeHtml(caseNo)}">×</span></span>
-  `).join('');
-}
-
-function removeFromList(list, value) {
-  const index = list.indexOf(value);
-  if (index >= 0) list.splice(index, 1);
 }
 
 // =================================================================
