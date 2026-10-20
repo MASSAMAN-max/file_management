@@ -25,7 +25,7 @@ window.openDetailModal = function(record) {
   document.getElementById("detailClient").value = record["取引先"] || "";
   document.getElementById("detailIssuedOrReceived").value = record["発行受領区分"] || "";
   document.getElementById("detailInvoiceRegistrationNumber").value = record["適格事業者登録番号"] || "";
-  document.getElementById("detailAmount").value = record["金額"] || "";
+  setTaxInputValues("detailTaxRate", "detailAmountExcl", "detailAmountIncl", record["税率"], record["金額（税抜）"], record["金額（税込）"]);
   document.getElementById("detailTransactionDate").value = toDateInputValue(record["取引日"]);
   document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
   document.getElementById("detailSubmitBtn").disabled = false; // 前回エラーで無効化されたままの状態を確実に解除する
@@ -73,6 +73,7 @@ function renderDetailLinkChips() {
 }
 
 bindCaseNoInput("detailLinkCaseNoInput", detailLinks, renderDetailLinkChips);
+bindTaxInputs("detailTaxRate", "detailAmountExcl", "detailAmountIncl");
 
 bindListAction("detailLinkChipArea", (d) => {
   removeFromList(detailLinks, d.id);
@@ -108,7 +109,9 @@ async function handleDetailSubmit(event) {
         client: document.getElementById("detailClient").value.trim(),
         issuedOrReceived: document.getElementById("detailIssuedOrReceived").value,
         invoiceRegistrationNumber: document.getElementById("detailInvoiceRegistrationNumber").value.trim(),
-        amount: document.getElementById("detailAmount").value.trim(),
+        taxRate: document.getElementById("detailTaxRate").value,
+        amountExcl: document.getElementById("detailAmountExcl").value.trim(),
+        amountIncl: document.getElementById("detailAmountIncl").value.trim(),
         transactionDate: document.getElementById("detailTransactionDate").value,
         description: document.getElementById("detailDescription").value.trim(),
         caseNos: detailLinks.slice() // サーバー側で、このファイルの案件の紐付けをこの一覧と同じ状態にそろえる
