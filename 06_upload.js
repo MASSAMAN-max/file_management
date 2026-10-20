@@ -99,7 +99,6 @@ async function handleCreateSubmit(event) {
   const displayName = document.getElementById("uploadDisplayName").value.trim();
   const useOcr = document.getElementById("uploadUseOcr").checked;
   commitCaseNoInput("linkCaseNoInput", pendingLinks, renderLinkChips); // Enterを押さずに登録した場合も取りこぼさない
-  const links = pendingLinks.map(caseNo => ({ type: "案件", id: caseNo }));
 
   const entryFields = {
     useTypeId: document.getElementById("uploadUseTypeId").value.trim(),
@@ -119,7 +118,7 @@ async function handleCreateSubmit(event) {
   try {
     // 【1段目】シートへ仮登録（軽量。base64はまだ送らない）
     const createResult = await apiCall("createRecordSheetOnly", {
-      fData: Object.assign({ fileName: file.name, mimeType: file.type, displayName: displayName, links: links }, entryFields)
+      fData: Object.assign({ fileName: file.name, mimeType: file.type, displayName: displayName, caseNos: pendingLinks.slice() }, entryFields)
     });
 
     closeCreateModal();
