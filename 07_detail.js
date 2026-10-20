@@ -40,15 +40,9 @@ window.openDetailModal = function(record) {
   const currentTagIds = String(record["タグID一覧"] || "").split(",").map(s => s.trim()).filter(Boolean);
   renderTagCheckboxesInto("detailTagCheckboxes", currentTagIds);
 
-  // 案件Noの紐付け：取得済みの紐付け情報から、このファイルの「案件」の紐付けを取り出して表示する
-  // （「ファイル」種別＝関連資料の紐付けは、ここでは扱わない）
+  // 案件Noの紐付け：レコードの「案件No」列（カンマ区切り）から取り出して表示する
   detailLinks.length = 0;
-  allLinksCache
-    .filter(link => link["紐付け先種別"] === "案件" && String(link["ファイルID"]) === String(record["ファイルID"]))
-    .forEach(link => {
-      const caseNo = String(link["紐付け先ID"]).trim();
-      if (caseNo && !detailLinks.includes(caseNo)) detailLinks.push(caseNo);
-    });
+  parseCaseNos(record["案件No"]).forEach(caseNo => detailLinks.push(caseNo));
   document.getElementById("detailLinkCaseNoInput").value = "";
   renderDetailLinkChips();
 
