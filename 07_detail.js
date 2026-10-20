@@ -43,8 +43,7 @@ window.openDetailModal = function(record) {
   // 案件Noの紐付け：レコードの「案件No」列（カンマ区切り）から取り出して表示する
   detailLinks.length = 0;
   parseCaseNos(record["案件No"]).forEach(caseNo => detailLinks.push(caseNo));
-  document.getElementById("detailLinkCaseNoInput").value = "";
-  renderDetailLinkChips();
+  projectPickers.detail.reset(); // 絞り込みを初期状態に戻し、選択中の案件を描画し直す
 
   // Driveプレビュー（画像・PDF・Office文書いずれもDriveの標準プレビューiframeで表示可能）
   const previewArea = document.getElementById("detailPreviewArea");
@@ -62,17 +61,7 @@ window.openDetailModal = function(record) {
   document.getElementById("detailModal").style.display = "flex";
 };
 
-function renderDetailLinkChips() {
-  renderCaseChips("detailLinkChipArea", detailLinks);
-}
-
-bindCaseNoInput("detailLinkCaseNoInput", detailLinks, renderDetailLinkChips);
 bindTaxInputs("detailTaxRate", "detailAmountExcl", "detailAmountIncl");
-
-bindListAction("detailLinkChipArea", (d) => {
-  removeFromList(detailLinks, d.id);
-  renderDetailLinkChips();
-});
 
 window.closeDetailModal = function() {
   document.getElementById("detailModal").style.display = "none";
@@ -82,8 +71,6 @@ async function handleDetailSubmit(event) {
   event.preventDefault();
   const mode = document.getElementById("detailMode").value; // confirm or update
   const action = (mode === "confirm") ? "confirmRecord" : "updateRecord";
-
-  commitCaseNoInput("detailLinkCaseNoInput", detailLinks, renderDetailLinkChips); // Enterを押さずに保存した場合も取りこぼさない
 
   // 二重送信防止：押した瞬間にボタンを無効化する
   const submitBtn = document.getElementById("detailSubmitBtn");
