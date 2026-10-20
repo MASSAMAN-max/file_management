@@ -221,7 +221,7 @@ async function initializeApp() {
   document.getElementById("loaderText").textContent = "ログイン認証中 & データを読み込み中...";
 
   try {
-    // ログイン・ファイル一覧・紐付け・タグ／用途種別マスタを1回のリクエストでまとめて取得する。
+    // ログイン・ファイル一覧・タグ／用途種別マスタを1回のリクエストでまとめて取得する。
     // 以前は4回（login→loadAllRecords→loadTagMaster→loadUseTypeMaster）に分けていたが、
     // リクエスト回数が多いほどGAS特有の303リダイレクト経由の404が起きやすかったため統合した。
     const initialData = await apiCall("loadInitialData");
@@ -236,7 +236,6 @@ async function initializeApp() {
     document.getElementById("deletedFilesBtn").style.display = isAdminUser() ? "flex" : "none";
 
     allRecordsCache = initialData.records || [];
-    allLinksCache = initialData.links || [];
     allTagsCache = initialData.tags || [];
     allUseTypesCache = initialData.useTypes || [];
 
@@ -265,14 +264,13 @@ async function initializeApp() {
 }
 
 /**
- * 一覧と紐付け情報だけを、サーバーから再取得する。
+ * 一覧だけを、サーバーから再取得する。
  * タグ・用途種別マスタは、変更した画面（マスタ管理）が自分で読み直すため、ここでは取得しない。
  * 以前はマスタも毎回取得しており、操作のたびにマスタ用のスプレッドシートを開く無駄な時間がかかっていた。
  */
 async function refreshRecordsCache() {
   const data = await apiCall("loadAllRecords");
   allRecordsCache = data.records || [];
-  allLinksCache = data.links || [];
   initFilterSelect("filterUseType", allRecordsCache, "用途種別ID", getUseTypeLabel);
   initTagFilterSelect();
 }
