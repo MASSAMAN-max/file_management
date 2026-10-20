@@ -16,6 +16,7 @@
 
 window.openCreateModal = function() {
   document.getElementById("createForm").reset();
+  setTaxInputValues("uploadTaxRate", "uploadAmountExcl", "uploadAmountIncl", "", "", ""); // 税率は10%に戻す
   pendingLinks.length = 0; // 一覧の中身だけを空にする（Enterキー・×ボタンの処理が同じ配列を参照し続けるため）
   renderLinkChips();
   renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
@@ -36,6 +37,7 @@ window.closeCreateModal = function() {
 };
 
 bindCaseNoInput("linkCaseNoInput", pendingLinks, () => renderLinkChips());
+bindTaxInputs("uploadTaxRate", "uploadAmountExcl", "uploadAmountIncl");
 
 // =================================================================
 // OCR有効時の詳細項目の折りたたみ制御
@@ -105,7 +107,9 @@ async function handleCreateSubmit(event) {
     client: document.getElementById("uploadClient").value.trim(),
     issuedOrReceived: document.getElementById("uploadIssuedOrReceived").value,
     invoiceRegistrationNumber: document.getElementById("uploadInvoiceRegistrationNumber").value.trim(),
-    amount: document.getElementById("uploadAmount").value.trim(),
+    taxRate: document.getElementById("uploadTaxRate").value,
+    amountExcl: document.getElementById("uploadAmountExcl").value.trim(),
+    amountIncl: document.getElementById("uploadAmountIncl").value.trim(),
     transactionDate: document.getElementById("uploadTransactionDate").value,
     description: document.getElementById("uploadDescription").value.trim()
   };
