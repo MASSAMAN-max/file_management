@@ -41,7 +41,7 @@ const ADMIN_PERMISSION = "管理者";
 // ※ POSTの応答だけが失敗した場合も、サーバー側の処理は実行済みの可能性がある。
 const RETRY_SAFE_ACTIONS = new Set([
   // 読み取りのみ
-  'loadInitialData', 'loadAllRecords', 'loadTagMaster', 'loadUseTypeMaster', 'loadTrashList', 'loadDeletedFiles',
+  'loadInitialData', 'loadAllRecords', 'loadProjects', 'loadTagMaster', 'loadUseTypeMaster', 'loadTrashList', 'loadDeletedFiles',
   // 書き込みだが、2回実行しても結果が同じもの
   // （同名タグ・種別は既存を返す／削除済みを再削除しても同じ／同じ内容での上書き）
   'addTag', 'addUseType', 'deleteTag', 'deleteUseType', 'updateRecord'
