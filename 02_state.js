@@ -49,5 +49,11 @@ function isAdminUser() { return currentPermission === ADMIN_PERMISSION; }
 // isAppInitialized … メイン画面を表示済みか（起動時の認証失敗は、initializeApp側のcatchで処理するため区別する）
 let isAppInitialized = false;
 let isHandlingAuthExpired = false;
+// 案件マスタ（紐付け入力欄の選択肢）。ログイン後に画面を表示してから、裏で読み込む（10_project_picker.js）
+let projectListCache = [];             // [{no, name, client, contact, __searchText}]
+let projectMapByNo = new Map();        // 案件No → 案件（チップに案件名を表示するための索引）
+let projectListStatus = "idle";        // idle（未取得）／loading（読込中）／ready（取得済み）／error（失敗）
+let projectListErrorMessage = "";      // error のときに部品へ表示するメッセージ
+
 let pendingLinks = []; // 登録モーダル内で追加された紐付け先（案件No）を一時保持
 let detailLinks = [];  // 詳細モーダルで編集中の紐付け先（案件No）。「確定保存／更新」で保存される
