@@ -166,3 +166,22 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); outlin
 
 #initLoader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background: #ffffff; z-index: 9999; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 120px; }
 @keyframes pulseText { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+/* 案件選択部品（登録・詳細モーダルの「紐付け先」。10_project_picker.js） */
+.project-picker-row { display:flex; gap:12px; margin-bottom:8px; }
+.project-picker-col { flex:1; min-width:0; }
+.project-picker-label { display:block; font-size:12px; font-weight:bold; color:var(--text-sub); margin-bottom:4px; }
+.project-picker select, .project-picker input[type="text"] { width:100%; padding:8px 10px; }
+.project-picker select:disabled { background:#f1f5f9; color:#94a3b8; cursor:not-allowed; }
+.project-picker-status { font-size:12px; color:var(--text-sub); margin:6px 0 4px; }
+.project-picker-status.is-error { color:#dc2626; }
+.project-picker-retry { margin-left:6px; padding:2px 10px; font-size:12px; cursor:pointer; border:1px solid #dc2626; border-radius:6px; background:white; color:#dc2626; }
+.project-picker-list { max-height:180px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px; }
+.project-picker-list:empty { display:none; }
+.project-picker-item { display:flex; align-items:baseline; gap:8px; width:100%; padding:8px 10px; border:none; border-bottom:1px solid #f1f5f9;
+  background:white; text-align:left; font-family:inherit; font-size:13px; cursor:pointer; }
+.project-picker-item:hover:not(:disabled) { background:#f0f9ff; }
+.project-picker-item:disabled { background:#f8fafc; color:#94a3b8; cursor:default; }
+.project-picker-item-no { font-weight:bold; flex-shrink:0; }
+.project-picker-item-sub { margin-left:auto; padding-left:8px; font-size:12px; color:#94a3b8; flex-shrink:0; }
+.project-picker-selected { margin-top:8px; }
