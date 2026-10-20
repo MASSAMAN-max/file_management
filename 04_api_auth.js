@@ -247,6 +247,9 @@ async function initializeApp() {
     isAppInitialized = true; // 以後の認証エラーは、handleAuthExpired で処理する
     search(); // 初期表示（絞り込みなしで全件表示）
 
+    // 案件マスタ（紐付け入力欄の選択肢）は、画面を表示した後に裏で読み込む（待たずに操作できる）
+    loadProjectsInBackground();
+
   } catch (err) {
     loader.style.display = "none";
     pendingLoginCredentials = null;
