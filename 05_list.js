@@ -56,14 +56,6 @@ function normalizeText(t) {
   return text.trim().toLowerCase();
 }
 
-// 案件Noで紐付いているファイルID一覧を、紐付け管理シートから取得する
-// （紐付け先種別＝案件 のレコードのみを対象とする。設計書3-4参照）
-function getFileIdsLinkedToCase(caseNo) {
-  return allLinksCache
-    .filter(link => link["紐付け先種別"] === "案件" && String(link["紐付け先ID"]).trim() === String(caseNo).trim())
-    .map(link => link["ファイルID"]);
-}
-
 /**
  * キーワード検索の対象テキスト（表示名・ファイル名・OCR全文を、正規化して連結したもの）。
  * 正規化（全角→半角など）はOCR全文が長いほど重いため、レコードごとに1回だけ作って使い回す。
@@ -82,7 +74,7 @@ function filterRecordsClientSide(records, filters) {
   const nKeyword = normalizeText(keyword);
   const nClient = normalizeText(client);
   const nUploader = normalizeText(uploader);
-  const linkedFileIds = caseNo ? getFileIdsLinkedToCase(caseNo) : null;
+  const targetCaseNo = caseNo ? String(caseNo).trim() : ""; // 案件Noの絞り込み（レコードの「案件No」のどれかと完全一致）
 
   // 日付範囲は未指定（空欄）であれば全期間を対象とする（デフォルト全期間）。
   // 日付はすべて「日本時間の日付（yyyy-MM-dd）」の文字列に揃えて比較する。
@@ -93,7 +85,7 @@ function filterRecordsClientSide(records, filters) {
     const status = r["レコードステータス"];
     if (status === "ゴミ箱" || status === "削除済み") return false;
 
-    if (linkedFileIds && !linkedFileIds.includes(r["ファイルID"])) return false;
+    if (targetCaseNo && !parseCaseNos(r["案件No"]).includes(targetCaseNo)) return false;
     if (useType && r["用途種別ID"] !== useType) return false;
     if (issuedOrReceived && r["発行受領区分"] !== issuedOrReceived) return false;
 
