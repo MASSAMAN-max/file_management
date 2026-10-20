@@ -180,7 +180,7 @@
       <div>発行/受領</div>
       <div>取引先</div>
       <div>取引日</div>
-      <div>金額</div>
+      <div>税込金額</div>
       <div>作成者</div>
     </div>
     <div id="results"></div>
@@ -265,13 +265,21 @@
           </div>
           <div style="display:flex; gap:12px;">
             <div class="form-group" style="flex:1;">
-              <label>金額</label>
-              <input type="number" id="uploadAmount" placeholder="例：50000">
+              <label>税率</label>
+              <select id="uploadTaxRate"></select>
             </div>
             <div class="form-group" style="flex:1;">
-              <label>取引日</label>
-              <input type="date" id="uploadTransactionDate">
+              <label>金額（税抜）</label>
+              <input type="number" id="uploadAmountExcl" min="0" step="1" placeholder="例：50000">
             </div>
+            <div class="form-group" style="flex:1;">
+              <label>金額（税込）</label>
+              <input type="number" id="uploadAmountIncl" min="0" step="1" placeholder="例：55000">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>取引日</label>
+            <input type="date" id="uploadTransactionDate">
           </div>
           <div class="form-group">
             <label>説明・備考</label>
@@ -345,13 +353,21 @@
       </div>
       <div style="display:flex; gap:12px;">
         <div class="form-group" style="flex:1;">
-          <label>金額</label>
-          <input type="number" id="detailAmount" placeholder="例：50000">
+          <label>税率</label>
+          <select id="detailTaxRate"></select>
         </div>
         <div class="form-group" style="flex:1;">
-          <label>取引日</label>
-          <input type="date" id="detailTransactionDate">
+          <label>金額（税抜）</label>
+          <input type="number" id="detailAmountExcl" min="0" step="1" placeholder="例：50000">
         </div>
+        <div class="form-group" style="flex:1;">
+          <label>金額（税込）</label>
+          <input type="number" id="detailAmountIncl" min="0" step="1" placeholder="例：55000">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>取引日</label>
+        <input type="date" id="detailTransactionDate">
       </div>
       <div class="form-group">
         <label>説明・備考</label>
