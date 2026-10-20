@@ -54,7 +54,7 @@ window.openDetailModal = function(record) {
 
   // Driveプレビュー（画像・PDF・Office文書いずれもDriveの標準プレビューiframeで表示可能）
   const previewArea = document.getElementById("detailPreviewArea");
-  const driveFileId = record["DriveファイルID"];
+  const driveFileId = extractDriveFileId(record["DriveファイルURL"]);
   previewArea.innerHTML = driveFileId
     ? `<iframe src="https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/preview" style="width:100%; height:320px; border:1px solid #e2e8f0; border-radius:8px;" allow="autoplay"></iframe>`
     : '<div style="color:#94a3b8; font-size:13px;">プレビューを表示できません（Drive保存前のファイルです）</div>';
