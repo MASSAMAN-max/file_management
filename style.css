@@ -1,0 +1,168 @@
+/**
+ * style.css：画面全体のスタイル
+ * （共通デザイントークン → ボタン・バッジ → 一覧 → モーダル → フォーム → ログイン画面の順）
+ */
+
+/* ===== 共通デザイントークン（案件管理アプリと統一） ===== */
+:root {
+  --primary: #4a90e2;
+  --primary-hover: #357abd;
+  --success: #2ecc71;
+  --success-hover: #27ae60;
+  --text-main: #222222;
+  --text-sub: #555555;
+  --border: #cccccc;
+  --bg-light: #f4f6f9;
+}
+
+body {
+  font-family: Meiryo, "Meiryo UI", "Hiragino Kaku Gothic ProN", sans-serif;
+  margin: 0;
+  background-color: var(--bg-light);
+  color: var(--text-main);
+  font-size: 16px;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 16px !important;
+  padding: 12px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  box-sizing: border-box;
+  background: white;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--primary); outline: none; background: #fdfdfd; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-weight: bold; cursor: pointer; border: none; border-radius: 8px;
+  padding: 12px 24px; font-size: 16px; transition: all 0.2s;
+}
+.btn-primary { background-color: var(--primary); color: white; }
+.btn-primary:hover { background-color: var(--primary-hover); }
+.btn-secondary { background-color: #bdc3c7; color: white; }
+.btn-success { background-color: var(--success); color: white; }
+.btn-success:hover { background-color: var(--success-hover); }
+.btn-danger-soft { background-color: #fee2e2; color: #dc2626; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+
+/* 検索条件のラベル */
+.filter-label { display: block; margin-bottom: 8px; font-weight: bold; color: var(--text-sub); }
+.filter-label-sm { font-size: 0.9rem; }
+
+.badge-no { background:#e2e8f0; color:#334155; padding:2px 5px; border-radius:5px; font-size:10.5px; font-weight:bold; white-space:nowrap; }
+.badge-status { padding:3px 10px; border-radius:6px; font-size:12px; font-weight:bold; }
+.badge-status.仮登録 { background:#fef3c7; color:#92400e; }
+.badge-status.通常 { background:#dcfce7; color:#166534; }
+
+/* 一覧表示（ヘッダー行付きグリッド）。列幅はヘッダー・行の両方で共有し、位置がずれないようにする */
+.file-list-wrapper { overflow-x: auto; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+.file-list-grid {
+  display: grid;
+  /* できるだけ横幅を詰めるため、各列は内容量に応じた最小限の幅にする */
+  grid-template-columns: 26px 58px 56px minmax(140px, 1fr) 84px 80px 62px 100px 82px 78px 74px;
+  align-items: center;
+  gap: 6px;
+  min-width: 870px;
+}
+.file-list-header {
+  font-size: 11px; font-weight: bold; color: #64748b; padding: 8px 10px;
+  border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; background: white; z-index: 2;
+}
+/* ヘッダーの各列ラベルは位置を中央に統一する */
+.file-list-header > div { text-align: center; }
+/* ヘッダーの「ファイル名」列だけは内容（左寄せ）に合わせて左寄せにする */
+.file-list-header-left { text-align: left !important; }
+.file-list-row {
+  padding: 9px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; font-size: 12px;
+}
+.file-list-row:last-child { border-bottom: none; }
+.file-list-row:hover { background: #f8fafc; }
+.file-list-row.is-locked { background:#f1f5f9; color:#94a3b8; cursor:not-allowed; }
+/* 内容表示も中央揃えに統一し、ファイル名（タイトル）だけは左寄せのまま読みやすさを優先する */
+.file-list-row > div { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-list-cell-title { font-weight: bold; color: #0f172a; text-align: left !important; }
+.file-list-cell-amount { text-align: right !important; }
+.file-list-cell-muted { color: #94a3b8; }
+
+/* モーダル（案件管理アプリと共通デザイン） */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6);
+  z-index: 5000; display: flex; align-items: center; justify-content: center; }
+
+/* SweetAlert2は独自モーダル(z-index:5000)より必ず手前に表示する。
+   これを設定しないと、モーダルを開いた状態で確認ダイアログ/トーストを出した際に
+   ダイアログが自作モーダルの後ろに隠れて操作不能になる（実際に発生した不具合の原因）。 */
+.swal2-container { z-index: 10000 !important; }
+.modal-content {
+  background: white; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-sizing: border-box;
+  max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; position: relative;
+}
+/* ヘッダー（タイトル・✕ボタン）は常に固定表示し、本文だけをスクロールさせるモーダル専用の構造。
+   ✕ボタンをスクロール領域の中に置くと、下にスクロールした時に押せなくなってしまうための対策。
+   使用時は .modal-content 側に padding:0 を指定し、ヘッダー/本文それぞれの余白で代替する。 */
+.modal-header { padding: 24px 32px 0 32px; flex-shrink: 0; }
+.modal-body { padding: 0 32px 32px 32px; overflow-y: auto; flex: 1 1 auto; }
+/* 詳細モーダル右上の✕閉じるボタン */
+.modal-close-btn {
+  position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: #f1f5f9; color: #64748b; border: none; border-radius: 50%;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.modal-close-btn:hover { background: #fee2e2; color: #ef4444; }
+/* モーダルの見出し。下線の色は --modal-accent で指定する（既定は青） */
+.modal-title {
+  margin: 0 36px 16px 0; color: #1e293b; padding-bottom: 10px;
+  border-bottom: 3px solid var(--modal-accent, var(--primary));
+}
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; color: #334155; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; box-sizing: border-box; }
+.badge-required { background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-left: 6px; vertical-align: middle; }
+.link-chip { display:inline-flex; align-items:center; gap:6px; background:#e0f2fe; color:#0369a1;
+  padding:4px 10px; border-radius:14px; font-size:13px; margin:2px; }
+.link-chip .remove { cursor:pointer; font-weight:bold; }
+
+/* トグルスイッチ（OCR実行有無など、オン/オフ選択の見た目を今風にするため） */
+.toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #cbd5e1; border-radius: 24px; transition: 0.2s; }
+.toggle-slider::before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+  background-color: white; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.toggle-switch input:checked + .toggle-slider { background-color: var(--success); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+/* 選択ファイル一括操作のプルダウンメニュー */
+.dropdown-wrapper { position: relative; }
+.dropdown-menu { position: absolute; top: calc(100% + 4px); left: 0; background: white; border: 1px solid #e2e8f0;
+  border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,0.12); min-width: 200px; z-index: 100; overflow: hidden; }
+.dropdown-item { padding: 12px 16px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex;
+  align-items: center; gap: 8px; transition: background 0.15s; }
+.dropdown-item:hover { background: #f1f5f9; }
+
+.login-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: white; }
+.login-box { width: 100%; max-width: 400px; padding: 32px; box-sizing: border-box; }
+
+.mini-logout-btn {
+  width: fit-content; display: flex; align-items: center; gap: 4px;
+  padding: 6px 10px; font-size: 12px; font-weight: bold;
+  background-color: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1;
+  border-radius: 6px; cursor: pointer; transition: all 0.2s ease;
+}
+.mini-logout-btn:hover { background-color: #fee2e2; color: #ef4444; border-color: #fca5a5; }
+
+/* ログインユーザー表記とログアウトボタンを同系デザインで揃えるための共通スタイル */
+.user-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 13px; font-weight: bold; padding: 4px 12px; border-radius: 20px;
+  background: #e2e8f0; color: var(--text-sub); border: none; cursor: default;
+}
+.user-pill-action { cursor: pointer; background: #f1f5f9; color: #64748b; transition: all 0.2s ease; }
+.user-pill-action:hover { background-color: #fee2e2; color: #ef4444; }
+
+#initLoader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background: #ffffff; z-index: 9999; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 120px; }
+@keyframes pulseText { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
