@@ -4,7 +4,7 @@
  * =====================================================================
  * 【役割】
  *   ・localStorage の安全な読み書き（storage）
- *   ・サーバーから取得したデータ（一覧・紐付け・タグ・用途種別）のキャッシュ
+ *   ・サーバーから取得したデータ（一覧・タグ・用途種別）のキャッシュ
  *   ・ログイン中のユーザーの権限、ログイン処理中の一時的な状態
  *   ・登録モーダル／詳細モーダルで編集中の案件No（pendingLinks / detailLinks）
  *
@@ -37,9 +37,8 @@ const storage = safeLocalStorage();
 // 端末には保存せず、メモリ上にだけ置く（成功・失敗のいずれでも、initializeApp が破棄する）。
 let pendingLoginCredentials = null;
 
-// サーバーから取得して画面全体で使うデータ（一覧・紐付け・マスタ）
+// サーバーから取得して画面全体で使うデータ（一覧・マスタ）
 let allRecordsCache = [];
-let allLinksCache = [];
 let allTagsCache = [];
 let allUseTypesCache = [];
 // ログイン中のユーザーの権限（「管理者」を表す定数 ADMIN_PERMISSION は 01_config.js にある）
