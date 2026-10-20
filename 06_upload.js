@@ -17,8 +17,8 @@
 window.openCreateModal = function() {
   document.getElementById("createForm").reset();
   setTaxInputValues("uploadTaxRate", "uploadAmountExcl", "uploadAmountIncl", "", "", ""); // 税率は10%に戻す
-  pendingLinks.length = 0; // 一覧の中身だけを空にする（Enterキー・×ボタンの処理が同じ配列を参照し続けるため）
-  renderLinkChips();
+  pendingLinks.length = 0; // 一覧の中身だけを空にする（案件選択部品が同じ配列を参照し続けるため）
+  projectPickers.upload.reset(); // 絞り込みを初期状態に戻し、選択中の案件を描画し直す
   renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
   renderTagCheckboxesInto("uploadTagCheckboxes", []);
   document.getElementById("uploadUseOcr").checked = true; // モーダルを開くたびOCRオンから開始する
@@ -36,7 +36,6 @@ window.closeCreateModal = function() {
   document.getElementById("createModal").style.display = "none";
 };
 
-bindCaseNoInput("linkCaseNoInput", pendingLinks, () => renderLinkChips());
 bindTaxInputs("uploadTaxRate", "uploadAmountExcl", "uploadAmountIncl");
 
 // =================================================================
@@ -52,7 +51,10 @@ window.applyUploadOcrLockState = function() {
 
 window.toggleUploadDetailSection = function() {
   // OCRオン時はユーザーの手動開閉自体を許可しない（自動入力される項目のため）
-  if (document.getElementById("uploadUseOcr").checked) return;
+  if (document.getElementById("uploadUseOcr").checked) {
+    showToast("OCRオンの間は詳細項目を開けません。手入力するにはOCRをオフにしてください。");
+    return;
+  }
   const body = document.getElementById("uploadDetailBody");
   const isOpen = body.style.display !== "none";
   setUploadDetailSectionOpen(!isOpen);
@@ -64,15 +66,6 @@ function setUploadDetailSectionOpen(isOpen) {
   body.style.display = isOpen ? "block" : "none";
   icon.style.transform = isOpen ? "rotate(180deg)" : "rotate(0deg)";
 }
-
-function renderLinkChips() {
-  renderCaseChips("linkChipArea", pendingLinks);
-}
-
-bindListAction("linkChipArea", (d) => {
-  removeFromList(pendingLinks, d.id);
-  renderLinkChips();
-});
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -98,7 +91,6 @@ async function handleCreateSubmit(event) {
 
   const displayName = document.getElementById("uploadDisplayName").value.trim();
   const useOcr = document.getElementById("uploadUseOcr").checked;
-  commitCaseNoInput("linkCaseNoInput", pendingLinks, renderLinkChips); // Enterを押さずに登録した場合も取りこぼさない
 
   const entryFields = {
     useTypeId: document.getElementById("uploadUseTypeId").value.trim(),
