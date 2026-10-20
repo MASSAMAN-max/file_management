@@ -175,6 +175,19 @@ function bindCaseNoInput(inputId, list, renderFn) {
   });
 }
 
+/**
+ * data シートの「案件No」列の値（カンマ区切り。例："12,15"）を、案件Noの配列にする。
+ * セルが数値1つだけのときは数値で届くことがあるため、文字列に直してから分ける。空・重複は除く。
+ */
+function parseCaseNos(value) {
+  const list = [];
+  String(value === null || value === undefined ? "" : value).split(",").forEach(text => {
+    const caseNo = text.trim();
+    if (caseNo && !list.includes(caseNo)) list.push(caseNo);
+  });
+  return list;
+}
+
 /** 案件Noのチップ（×で削除できる）を描画する */
 function renderCaseChips(areaId, list) {
   document.getElementById(areaId).innerHTML = list.map(caseNo => `
