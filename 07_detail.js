@@ -28,7 +28,6 @@ window.openDetailModal = function(record) {
   setTaxInputValues("detailTaxRate", "detailAmountExcl", "detailAmountIncl", record["税率"], record["金額（税抜）"], record["金額（税込）"]);
   document.getElementById("detailTransactionDate").value = toDateInputValue(record["取引日"]);
   document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
-  document.getElementById("detailSubmitBtn").disabled = false; // 前回エラーで無効化されたままの状態を確実に解除する
 
   // ゴミ箱への移動は確定済み・確認待ちの両方で許可する（サーバー側でもOCR処理中は拒否される）
   document.getElementById("detailDeleteBtn").style.display = "inline-flex";
@@ -59,9 +58,114 @@ window.openDetailModal = function(record) {
     : `【OCR抽出結果】未取得（OCRステータス: ${ocrStatus || "未実施"}）`;
 
   document.getElementById("detailModal").style.display = "flex";
+  document.querySelector("#detailModal .modal-body").scrollTop = 0; // 一覧から開いたときは、常に一番上から表示する
+
+  // 変更検知の基準にする、開いた時点の入力内容。
+  // 確定済みファイルの更新では、変更が無い間は「更新する」を押せない（前回エラーで無効化されたままの状態もここで解除される）
+  detailInitialData = collectDetailFormData();
+  updateDetailSubmitState();
 };
 
+// =================================================================
+// 入力内容の取得と、変更の検知（確定済みファイルの更新用）
+// =================================================================
+let detailInitialData = null; // モーダルを開いた時点の入力内容（collectDetailFormData の結果）
+
+// 変更を検知・表示する項目（キー：collectDetailFormData の項目名、ラベル：確認画面に出す項目名）
+const DETAIL_CHANGE_FIELDS = [
+  { key: "displayName", label: "表示名" },
+  { key: "useTypeId", label: "書類種別" },
+  { key: "tagIds", label: "タグ" },
+  { key: "client", label: "取引先" },
+  { key: "issuedOrReceived", label: "発行／受領" },
+  { key: "invoiceRegistrationNumber", label: "適格事業者登録番号" },
+  { key: "taxRate", label: "税率" },
+  { key: "amountExcl", label: "金額（税抜）" },
+  { key: "amountIncl", label: "金額（税込）" },
+  { key: "transactionDate", label: "取引日" },
+  { key: "description", label: "説明・備考" },
+  { key: "caseNos", label: "案件No" }
+];
+
+/** 詳細モーダルの入力内容を、サーバーへ送る形（fData）で集める。保存と、変更の検知の両方で使う */
+function collectDetailFormData() {
+  return {
+    fileId: document.getElementById("detailFileId").value,
+    rowNumber: Number(document.getElementById("detailRowNumber").value),
+    displayName: document.getElementById("detailDisplayName").value.trim(),
+    useTypeId: document.getElementById("detailUseTypeId").value.trim(),
+    tagIds: getCheckedTagIdsIn("detailTagCheckboxes"),
+    client: document.getElementById("detailClient").value.trim(),
+    issuedOrReceived: document.getElementById("detailIssuedOrReceived").value,
+    invoiceRegistrationNumber: document.getElementById("detailInvoiceRegistrationNumber").value.trim(),
+    taxRate: document.getElementById("detailTaxRate").value,
+    amountExcl: getAmountInputValue("detailAmountExcl"),
+    amountIncl: getAmountInputValue("detailAmountIncl"),
+    transactionDate: document.getElementById("detailTransactionDate").value,
+    description: document.getElementById("detailDescription").value.trim(),
+    caseNos: detailLinks.slice() // サーバー側で、このファイルの案件の紐付けをこの一覧と同じ状態にそろえる
+  };
+}
+
+/** 比較用の値にする（タグ・案件Noは並び順の違いを変更とみなさない） */
+function toComparableValue(value) {
+  return Array.isArray(value) ? [...value].sort().join(",") : String(value);
+}
+
+/** 確認画面に出す値の文字列にする（IDは名前に、金額は「12,345円」に直す。長い文字は省略する） */
+function formatDetailChangeValue(key, value) {
+  if (key === "tagIds") return getTagLabels(value.join(",")).join("、") || "（なし）";
+  if (key === "caseNos") return value.join(", ") || "（なし）";
+  if (key === "useTypeId") return getUseTypeLabel(value) || "（未設定）";
+  if (key === "taxRate") return value === TAX_RATE_NON_TAXABLE ? value : `${value}%`;
+  if (key === "amountExcl" || key === "amountIncl") return value === "" ? "（空）" : formatAmountText(value);
+  if (value === "") return "（空）";
+  const chars = [...String(value)];
+  return chars.length > 30 ? chars.slice(0, 30).join("") + "…" : String(value);
+}
+
+/** 開いた時点の入力内容から変わっている項目の一覧（[{label, before, after}]）。変更が無ければ空 */
+function getDetailChanges() {
+  if (!detailInitialData) return [];
+  const current = collectDetailFormData();
+  return DETAIL_CHANGE_FIELDS
+    .filter(field => toComparableValue(current[field.key]) !== toComparableValue(detailInitialData[field.key]))
+    .map(field => ({
+      label: field.label,
+      before: formatDetailChangeValue(field.key, detailInitialData[field.key]),
+      after: formatDetailChangeValue(field.key, current[field.key])
+    }));
+}
+
+/** 確定済みファイル（更新モード）は、変更が無い間「更新する」を押せなくする。確定保存モードは常に押せる */
+function updateDetailSubmitState() {
+  const submitBtn = document.getElementById("detailSubmitBtn");
+  const isUpdateMode = document.getElementById("detailMode").value === "update";
+  submitBtn.disabled = isUpdateMode && getDetailChanges().length === 0;
+}
+
+/** 変更する項目と、変更前→変更後を見せて、本当に更新するかを確認する。更新する場合は true */
+async function confirmDetailChanges(changes) {
+  const html = '<div style="text-align:left; font-size:13px; line-height:1.8;">' +
+    changes.map(c => `<div><b>${escapeHtml(c.label)}</b>：${escapeHtml(c.before)} → ${escapeHtml(c.after)}</div>`).join("") +
+    '</div>';
+  const result = await Swal.fire({
+    title: "内容を変更しますか？",
+    html: html,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "変更する",
+    cancelButtonText: "キャンセル"
+  });
+  return result.isConfirmed;
+}
+
 bindTaxInputs("detailTaxRate", "detailAmountExcl", "detailAmountIncl");
+
+// 入力欄・セレクト・タグ・案件の変更を検知して、「更新する」ボタンの有効／無効を切り替える
+["input", "change"].forEach(eventType => {
+  document.getElementById("detailForm").addEventListener(eventType, updateDetailSubmitState);
+});
 
 window.closeDetailModal = function() {
   document.getElementById("detailModal").style.display = "none";
@@ -72,6 +176,13 @@ async function handleDetailSubmit(event) {
   const mode = document.getElementById("detailMode").value; // confirm or update
   const action = (mode === "confirm") ? "confirmRecord" : "updateRecord";
 
+  // 確定済みファイルの更新：変更内容を確認してから保存する（変更が無い場合は何もしない）
+  if (mode === "update") {
+    const changes = getDetailChanges();
+    if (changes.length === 0) return;
+    if (!(await confirmDetailChanges(changes))) return;
+  }
+
   // 二重送信防止：押した瞬間にボタンを無効化する
   const submitBtn = document.getElementById("detailSubmitBtn");
   submitBtn.disabled = true;
@@ -80,24 +191,7 @@ async function handleDetailSubmit(event) {
   showToast(mode === "confirm" ? "確定保存中..." : "更新中...", true);
 
   try {
-    await apiCall(action, {
-      fData: {
-        fileId: document.getElementById("detailFileId").value,
-        rowNumber: Number(document.getElementById("detailRowNumber").value),
-        displayName: document.getElementById("detailDisplayName").value.trim(),
-        useTypeId: document.getElementById("detailUseTypeId").value.trim(),
-        tagIds: getCheckedTagIdsIn("detailTagCheckboxes"),
-        client: document.getElementById("detailClient").value.trim(),
-        issuedOrReceived: document.getElementById("detailIssuedOrReceived").value,
-        invoiceRegistrationNumber: document.getElementById("detailInvoiceRegistrationNumber").value.trim(),
-        taxRate: document.getElementById("detailTaxRate").value,
-        amountExcl: document.getElementById("detailAmountExcl").value.trim(),
-        amountIncl: document.getElementById("detailAmountIncl").value.trim(),
-        transactionDate: document.getElementById("detailTransactionDate").value,
-        description: document.getElementById("detailDescription").value.trim(),
-        caseNos: detailLinks.slice() // サーバー側で、このファイルの案件の紐付けをこの一覧と同じ状態にそろえる
-      }
-    });
+    await apiCall(action, { fData: collectDetailFormData() });
 
     closeDetailModal();
     Swal.close(); // 表示し続けていた「処理中」トーストを閉じてから完了通知に切り替える
