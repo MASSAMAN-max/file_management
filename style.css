@@ -121,6 +121,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); outlin
   border-bottom: 3px solid var(--modal-accent, var(--primary));
 }
 .form-group { margin-bottom: 16px; }
+/* 入力項目を横に並べる行（狭い画面では折り返す）。各項目の幅は flex で個別に指定する */
+.form-row { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.form-row > .form-group { min-width: 0; }
 .form-group label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; color: #334155; }
 .form-group input, .form-group select, .form-group textarea { width: 100%; box-sizing: border-box; }
 .badge-required { background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-left: 6px; vertical-align: middle; }
@@ -170,6 +173,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); outlin
 @keyframes pulseText { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 
 /* 案件選択部品（登録・詳細モーダルの「紐付け先」。10_project_picker.js） */
+/* タブ・選択済みの案件・検索欄・案件候補までを1つの枠にまとめ、紐付け先の範囲を分かりやすくする */
+.project-picker { border: 2px solid #cbd5e1; border-radius: 10px; padding: 10px; background: #fff; transition: border-color 0.2s, background 0.2s; }
+.project-picker.is-open { border-color: var(--primary); background: #f8fbff; }
 .project-picker-row { display:flex; gap:12px; margin-bottom:8px; }
 .project-picker-col { flex:1; min-width:0; }
 .project-picker-label { display:block; font-size:12px; font-weight:bold; color:var(--text-sub); margin-bottom:4px; }
@@ -190,7 +196,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); outlin
   background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-family:inherit; font-size:13px; font-weight:bold; color:#475569; cursor:pointer; }
 .project-picker-toggle:hover { background:#f1f5f9; }
 .project-picker-toggle-icon { transition:transform 0.2s; }
-.project-picker-body { margin-top:8px; }
+.project-picker-body { margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1; }
 .project-picker-selected { margin-top:8px; }
 .project-picker-selected:empty { display:none; }
 
