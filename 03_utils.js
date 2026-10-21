@@ -168,10 +168,39 @@ function parseCaseNos(value) {
 }
 
 // =================================================================
+// 通貨（登録モーダル・詳細モーダルで共通）
+// 通貨コードと小数の桁数は、サーバー側（08_ファイル情報管理.js の CURRENCY_DECIMALS_）と必ずそろえること。
+// =================================================================
+const DEFAULT_CURRENCY_CODE = "JPY"; // 通貨が空（既存データ・通貨列が無い行）のときは円として扱う
+const CURRENCIES = [
+  { code: "JPY", symbol: "¥",   name: "円",         decimals: 0 },
+  { code: "USD", symbol: "$",   name: "米ドル",     decimals: 2 },
+  { code: "EUR", symbol: "€",   name: "ユーロ",     decimals: 2 },
+  { code: "GBP", symbol: "£",   name: "英ポンド",   decimals: 2 },
+  { code: "CNY", symbol: "CN¥", name: "人民元",     decimals: 2 }, // 円と同じ「¥」で紛らわしいため CN を付ける
+  { code: "AUD", symbol: "A$",  name: "豪ドル",     decimals: 2 },
+  { code: "KRW", symbol: "₩",   name: "韓国ウォン", decimals: 0 }
+];
+
+/** 通貨コード → 通貨の定義。空は円。リストにないコードは、コードをそのまま記号にして表示する（円と取り違えないため） */
+function getCurrency(code) {
+  const text = String(code === null || code === undefined ? "" : code).trim();
+  if (text === "") return CURRENCIES[0];
+  return CURRENCIES.find(c => c.code === text) || { code: text, symbol: text, name: text, decimals: 0 };
+}
+
+/** 選択リスト・確認画面に出す通貨名（例：「$ 米ドル（USD）」） */
+function getCurrencyLabel(currency) {
+  return `${currency.symbol} ${currency.name}（${currency.code}）`;
+}
+
+// =================================================================
 // 税率・金額（税抜／税込）の入力欄（登録モーダル・詳細モーダルで共通）
 // 計算規則はサーバー側（08_ファイル情報管理.js の buildAmountFields_）と同じ：
-//   ・1円未満は切り捨て　・不課税は税率0%扱い
+//   ・通貨の最小単位（円なら1円、ドルなら1セント）未満は切り捨て　・不課税は税率0%扱い
+//   ・計算は「最小単位の整数」で行う（小数のまま計算すると、誤差で1セントずれることがあるため）
 // 最後に入力した金額欄を基準に、もう一方を自動計算する（基準は税率欄の data-base に保持）。
+// 金額欄は、どの通貨選択リストを見るかを data-currency-id に持つ（bindTaxInputs が設定する）。
 // =================================================================
 const TAX_RATE_NON_TAXABLE = "不課税";
 const DEFAULT_TAX_RATE = "10"; // 税率の初期値（%）
@@ -188,45 +217,74 @@ function toHalfWidthDigits(text) {
 }
 
 /**
- * 金額欄の文字列から、数字だけを取り出す（「12,345円」→「12345」）。
- * 全角数字は半角にし、カンマ・空白・「円」は除く。小数（例：1,234.5）は1円未満を切り捨てる。
+ * 金額欄の文字列から、数字と小数点だけを取り出す（「$ 1,234.50」→「1234.50」、「¥ 12,345」→「12345」）。
+ * 全角数字は半角にし、カンマ・空白・通貨記号・「円」は除く。通貨の小数桁数より細かい桁は切り捨てる。
+ * @param {string} text 入力欄の文字列
+ * @param {number} decimals 通貨の小数桁数（0なら小数点以下は切り捨て）
+ * @param {boolean} keepTrailingDot 入力中は true（「12.」まで打った時点で小数点を消さないため）
  */
-function toAmountDigits(text) {
-  const half = toHalfWidthDigits(text).replace(/[,，\s円]/g, "");
-  const decimal = half.match(/^(\d+)\.\d*$/);
-  return decimal ? decimal[1] : half.replace(/\D/g, "");
+function toAmountDigits(text, decimals, keepTrailingDot) {
+  const half = toHalfWidthDigits(text).replace(/[．。]/g, ".").replace(/[^\d.]/g, "");
+  const dotIndex = half.indexOf(".");
+  if (dotIndex === -1) return half;
+  const intPart = half.slice(0, dotIndex);
+  if (decimals === 0) return intPart;
+  const fractionPart = half.slice(dotIndex + 1).replace(/\./g, "").slice(0, decimals);
+  if (fractionPart === "") return keepTrailingDot ? (intPart || "0") + "." : intPart;
+  return (intPart || "0") + "." + fractionPart;
 }
 
-/** 金額欄の値を整数（円）にする。空は null */
-function parseAmountInput(text) {
-  const digits = toAmountDigits(text);
-  return digits === "" ? null : Number(digits);
+/** 金額欄の値を、最小単位（円・セント）の整数にする。空は null */
+function parseAmountMinor(text, decimals) {
+  const digits = toAmountDigits(text, decimals, false);
+  if (digits === "") return null;
+  const parts = digits.split(".");
+  const fraction = (parts[1] || "").padEnd(decimals, "0");
+  return Number(parts[0]) * Math.pow(10, decimals) + Number(fraction);
 }
 
-/** 金額を「12,345円」の表示にする */
-function formatAmountText(amount) {
-  return `${Number(amount).toLocaleString("ja-JP")}円`;
+/** 最小単位の整数を、金額（円なら整数、ドルなら 12.34 のような小数）にする */
+function minorToAmount(minor, decimals) {
+  return minor / Math.pow(10, decimals);
 }
 
-/** 金額欄に値を入れる（表示は「12,345円」）。空（null・""）なら欄を空にする */
+/** 金額を「¥ 12,345」「$ 1,234.50」の表示にする（通貨が空なら円） */
+function formatAmountText(amount, currencyCode) {
+  const currency = getCurrency(currencyCode);
+  const number = Number(amount).toLocaleString("ja-JP", {
+    minimumFractionDigits: currency.decimals,
+    maximumFractionDigits: currency.decimals
+  });
+  return `${currency.symbol} ${number}`;
+}
+
+/** この金額欄に対応する通貨を返す（通貨選択リストの現在の値） */
+function getInputCurrency(inputEl) {
+  const currencyEl = document.getElementById(inputEl.dataset.currencyId || "");
+  return getCurrency(currencyEl ? currencyEl.value : "");
+}
+
+/** 金額欄に値を入れる（表示は「¥ 12,345」）。空（null・""）なら欄を空にする */
 function setAmountInputValue(inputEl, amount) {
-  inputEl.value = (amount === null || amount === undefined || amount === "") ? "" : formatAmountText(amount);
+  const isEmpty = (amount === null || amount === undefined || amount === "");
+  inputEl.value = isEmpty ? "" : formatAmountText(amount, getInputCurrency(inputEl).code);
 }
 
-/** 金額欄の値を、サーバーへ送る「数字だけの文字列」にする（空なら ""。記録は数値のみ） */
+/** 金額欄の値を、サーバーへ送る「数字（と小数点）だけの文字列」にする（空なら ""。記録は数値のみ） */
 function getAmountInputValue(inputId) {
-  return toAmountDigits(document.getElementById(inputId).value);
+  const inputEl = document.getElementById(inputId);
+  return toAmountDigits(inputEl.value, getInputCurrency(inputEl).decimals, false);
 }
 
 /**
- * 金額欄を「入力中は数字だけ、入力が終わったら 12,345円」の動きにする。
- * 入力中にカンマや「円」が入ると、カーソルの位置がずれて打ち間違えやすいため。
+ * 金額欄を「入力中は数字だけ、入力が終わったら ¥ 12,345」の動きにする。
+ * 入力中にカンマや記号が入ると、カーソルの位置がずれて打ち間違えやすいため。
  * @param {function} onChange 金額が入力されたときに呼ぶ処理（もう一方の金額の自動計算など）
  */
 function bindAmountInput(inputEl, onChange) {
   const sanitize = () => {
-    const digits = toAmountDigits(inputEl.value);
-    if (inputEl.value !== digits) inputEl.value = digits; // 変わるときだけ代入する（カーソル位置を保つため）
+    const text = toAmountDigits(inputEl.value, getInputCurrency(inputEl).decimals, true);
+    if (inputEl.value !== text) inputEl.value = text; // 変わるときだけ代入する（カーソル位置を保つため）
   };
   inputEl.addEventListener("focus", sanitize);
   inputEl.addEventListener("input", (e) => {
@@ -235,7 +293,11 @@ function bindAmountInput(inputEl, onChange) {
     onChange();
   });
   inputEl.addEventListener("compositionend", () => { sanitize(); onChange(); });
-  inputEl.addEventListener("blur", () => setAmountInputValue(inputEl, parseAmountInput(inputEl.value)));
+  inputEl.addEventListener("blur", () => {
+    const decimals = getInputCurrency(inputEl).decimals;
+    const minor = parseAmountMinor(inputEl.value, decimals);
+    setAmountInputValue(inputEl, minor === null ? null : minorToAmount(minor, decimals));
+  });
 }
 
 /** 税率欄の値（"不課税" または "1"〜"10"）を、計算用の％の数値にする */
@@ -246,20 +308,34 @@ function taxRateToPercent(rateValue) {
 /** 基準にした金額欄の値から、もう一方の金額欄を計算して入れる */
 function recalcTaxAmounts(rateEl, exclEl, inclEl) {
   const percent = taxRateToPercent(rateEl.value);
+  const decimals = getInputCurrency(exclEl).decimals;
   if (rateEl.dataset.base === "excl") {
-    const excl = parseAmountInput(exclEl.value);
-    setAmountInputValue(inclEl, excl === null ? null : floorDiv(excl * (100 + percent), 100));
+    const excl = parseAmountMinor(exclEl.value, decimals);
+    setAmountInputValue(inclEl, excl === null ? null : minorToAmount(floorDiv(excl * (100 + percent), 100), decimals));
   } else {
-    const incl = parseAmountInput(inclEl.value);
-    setAmountInputValue(exclEl, incl === null ? null : floorDiv(incl * 100, 100 + percent));
+    const incl = parseAmountMinor(inclEl.value, decimals);
+    setAmountInputValue(exclEl, incl === null ? null : minorToAmount(floorDiv(incl * 100, 100 + percent), decimals));
   }
 }
 
-/** 税率リストを作り、入力・変更時の自動計算を紐付ける（画面の読み込み時に1回だけ呼ぶ） */
-function bindTaxInputs(rateId, exclId, inclId) {
+/** 通貨に合わせて、スマホの入力キーボードを切り替える（小数がある通貨だけ、小数点が打てるキーボードにする） */
+function applyAmountKeyboard(currencyEl, exclEl, inclEl) {
+  const mode = getCurrency(currencyEl.value).decimals === 0 ? "numeric" : "decimal";
+  exclEl.inputMode = mode;
+  inclEl.inputMode = mode;
+}
+
+/** 通貨・税率の選択リストを作り、入力・変更時の自動計算を紐付ける（画面の読み込み時に1回だけ呼ぶ） */
+function bindTaxInputs(rateId, exclId, inclId, currencyId) {
   const rateEl = document.getElementById(rateId);
   const exclEl = document.getElementById(exclId);
   const inclEl = document.getElementById(inclId);
+  const currencyEl = document.getElementById(currencyId);
+
+  currencyEl.innerHTML = CURRENCIES.map(c => `<option value="${c.code}">${escapeHtml(getCurrencyLabel(c))}</option>`).join("");
+  currencyEl.value = DEFAULT_CURRENCY_CODE;
+  exclEl.dataset.currencyId = currencyId;
+  inclEl.dataset.currencyId = currencyId;
 
   const rates = [TAX_RATE_NON_TAXABLE, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
   rateEl.innerHTML = rates.map(r => `<option value="${r}">${r === TAX_RATE_NON_TAXABLE ? r : r + "%"}</option>`).join("");
@@ -269,21 +345,56 @@ function bindTaxInputs(rateId, exclId, inclId) {
   bindAmountInput(exclEl, () => { rateEl.dataset.base = "excl"; recalcTaxAmounts(rateEl, exclEl, inclEl); });
   bindAmountInput(inclEl, () => { rateEl.dataset.base = "incl"; recalcTaxAmounts(rateEl, exclEl, inclEl); });
   rateEl.addEventListener("change", () => recalcTaxAmounts(rateEl, exclEl, inclEl));
+
+  // 通貨を変えたら、入力済みの金額を新しい通貨の桁数に合わせて表示し直し、もう一方の金額も計算し直す
+  // （例：ドル→円に変えると、小数部分は切り捨てられる）
+  currencyEl.addEventListener("change", () => {
+    applyAmountKeyboard(currencyEl, exclEl, inclEl);
+    const decimals = getCurrency(currencyEl.value).decimals;
+    [exclEl, inclEl].forEach(el => {
+      const minor = parseAmountMinor(el.value, decimals);
+      setAmountInputValue(el, minor === null ? null : minorToAmount(minor, decimals));
+    });
+    recalcTaxAmounts(rateEl, exclEl, inclEl);
+  });
 }
 
 /**
- * モーダルを開くときに、税率・金額の3項目へ保存済みの値を入れる（再計算はしない）。
- * 税率が空・リストにない値のときは10%にする。基準の金額欄は税込に戻す。
+ * モーダルを開くときに、通貨・税率・金額の入力欄へ保存済みの値を入れる（再計算はしない）。
+ * 通貨が空・リストにない値のときは円、税率が空・リストにない値のときは10%にする。基準の金額欄は税込に戻す。
+ * ※ 金額の表示形式は通貨で決まるため、先に通貨を入れてから金額を入れる。
  */
-function setTaxInputValues(rateId, exclId, inclId, taxRate, amountExcl, amountIncl) {
+function setTaxInputValues(rateId, exclId, inclId, currencyId, currency, taxRate, amountExcl, amountIncl) {
+  const currencyEl = document.getElementById(currencyId);
+  const currencyText = String(currency === null || currency === undefined ? "" : currency).trim();
+  currencyEl.value = currencyText;
+  if (currencyEl.value !== currencyText || currencyText === "") currencyEl.value = DEFAULT_CURRENCY_CODE; // リストにない値は選択できないため
+  const exclEl = document.getElementById(exclId);
+  const inclEl = document.getElementById(inclId);
+  applyAmountKeyboard(currencyEl, exclEl, inclEl);
+
   const rateEl = document.getElementById(rateId);
   const rateText = String(taxRate === null || taxRate === undefined ? "" : taxRate).trim();
   rateEl.value = rateText;
   if (rateEl.value !== rateText || rateText === "") rateEl.value = DEFAULT_TAX_RATE; // リストにない値は選択できないため
   rateEl.dataset.base = "incl";
-  setAmountInputValue(document.getElementById(exclId), amountExcl);
-  setAmountInputValue(document.getElementById(inclId), amountIncl);
+  setAmountInputValue(exclEl, amountExcl);
+  setAmountInputValue(inclEl, amountIncl);
 }
+
+// =================================================================
+// 日付入力欄：カレンダーのマークだけでなく、欄のどこをタップしてもカレンダーを開く
+// （画面上のすべての日付欄に効く。新しい日付欄を足しても個別の設定は不要）
+// =================================================================
+document.addEventListener("click", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement) || el.type !== "date" || el.disabled || el.readOnly) return;
+  try {
+    el.showPicker();
+  } catch (err) {
+    // showPicker に対応していないブラウザや、すでにカレンダーが開いている場合は何もしない
+  }
+});
 
 // =================================================================
 // 用途種別セレクト／タグチェックボックスの共通描画処理
