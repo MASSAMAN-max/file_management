@@ -133,21 +133,21 @@
         <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 2; min-width: 280px;">
           <div style="flex: 1; min-width: 130px;">
             <label class="filter-label filter-label-sm">取引日（開始）※デフォルト全期間</label>
-            <input type="date" id="filterTransactionStartDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+            <input type="date" id="filterTransactionStartDate" style="width:100%;">
           </div>
           <div style="flex: 1; min-width: 130px;">
             <label class="filter-label filter-label-sm">取引日（終了）</label>
-            <input type="date" id="filterTransactionEndDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+            <input type="date" id="filterTransactionEndDate" style="width:100%;">
           </div>
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 2; min-width: 280px;">
           <div style="flex: 1; min-width: 130px;">
             <label class="filter-label filter-label-sm">作成日（開始）※デフォルト全期間</label>
-            <input type="date" id="filterCreatedStartDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+            <input type="date" id="filterCreatedStartDate" style="width:100%;">
           </div>
           <div style="flex: 1; min-width: 130px;">
             <label class="filter-label filter-label-sm">作成日（終了）</label>
-            <input type="date" id="filterCreatedEndDate" style="width:100%; cursor:pointer;" onclick="this.showPicker?.()">
+            <input type="date" id="filterCreatedEndDate" style="width:100%;">
           </div>
         </div>
       </div>
@@ -206,14 +206,16 @@
     <div class="modal-body">
 <form id="createForm" onsubmit="handleCreateSubmit(event)">
       <div class="form-group">
-        <label>ファイル</label>
-        <input type="file" id="uploadFileInput" required>
+        <label>ファイル（複数選択可・最大10件）</label>
+        <input type="file" id="uploadFileInput" required multiple onchange="onUploadFilesChanged()">
+        <!-- 2件以上選んだときだけ、共通項目が全ファイルに適用される旨を表示する（06_upload.js） -->
+        <div id="uploadFileSummary" style="display:none; font-size:12px; color:var(--text-sub); margin-top:4px;"></div>
       </div>
       <div class="form-group">
         <label style="display:flex; align-items:center; justify-content:space-between; font-weight:normal;">
           <span>OCRでテキストを自動抽出する</span>
           <span class="toggle-switch">
-            <input type="checkbox" id="uploadUseOcr" checked onchange="applyUploadOcrLockState()">
+            <input type="checkbox" id="uploadUseOcr" checked onchange="applyUploadDetailLockState()">
             <span class="toggle-slider"></span>
           </span>
         </label>
@@ -222,16 +224,13 @@
         </div>
       </div>
 
-      <!-- OCRのオン/オフに関わらず常に表示・操作できる項目（発行／受領は必須のためユーザーが必ず選ぶ） -->
-      <div class="form-group">
-        <label>書類種別</label>
-        <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
-      </div>
-      <!-- タグと発行／受領は横並び（画面が狭いときは自動で縦に折り返す） -->
+      <!-- OCRのオン/オフ・ファイル数に関わらず常に表示・操作できる項目（発行／受領は必須のためユーザーが必ず選ぶ）。
+           複数ファイルを選んだときは、ここの項目が全ファイルに共通で適用される。
+           ※ 通貨・税率は下の詳細項目の中にある。OCRオン・複数ファイルのときは操作できず、円・税率10%で登録される -->
       <div class="form-row">
         <div class="form-group" style="flex:2 1 200px;">
-          <label>タグ</label>
-          <div id="uploadTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+          <label>書類種別</label>
+          <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
         </div>
         <div class="form-group" style="flex:1 1 140px;">
           <label>発行／受領 <span class="badge-required">必須</span></label>
@@ -242,6 +241,10 @@
           </select>
         </div>
       </div>
+      <div class="form-group">
+        <label>タグ</label>
+        <div id="uploadTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
       <!-- 案件Noの紐付けはOCRで自動入力される項目ではないため、OCRのオン/オフに関わらず常に入力できる -->
       <div class="form-group">
         <div id="uploadProjectPicker"></div>
@@ -251,7 +254,7 @@
       <div id="uploadDetailSection" style="border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px; overflow:hidden;">
         <div id="uploadDetailToggle" onclick="toggleUploadDetailSection()"
              style="cursor:pointer; background:#f8fafc; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:bold; color:#475569;">
-          <span>詳細項目（表示名・取引先・金額など）</span>
+          <span>詳細項目（表示名・取引先・通貨・金額など）</span>
           <span id="uploadDetailToggleIcon" class="material-symbols-outlined" style="transition:transform 0.2s;">expand_more</span>
         </div>
         <div id="uploadDetailBody" style="display:none; padding:16px; border-top:1px solid #e2e8f0;">
@@ -259,33 +262,39 @@
             <label>表示名（空欄の場合はファイル名を使用）</label>
             <input type="text" id="uploadDisplayName" placeholder="例：〇〇様邸_見積書">
           </div>
-          <div style="display:flex; gap:12px;">
-            <div class="form-group" style="flex:1;">
-              <label>取引先</label>
-              <input type="text" id="uploadClient" placeholder="例：〇〇株式会社">
+          <div class="form-group">
+            <label>取引先</label>
+            <input type="text" id="uploadClient" placeholder="例：〇〇株式会社">
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:2 1 220px;">
+              <label>適格事業者登録番号（Tから始まる13桁）</label>
+              <input type="text" id="uploadInvoiceRegistrationNumber" placeholder="例：T1234567890123">
+            </div>
+            <div class="form-group" style="flex:1 1 140px;">
+              <label>取引日</label>
+              <input type="date" id="uploadTransactionDate">
             </div>
           </div>
-          <div class="form-group">
-            <label>適格事業者登録番号</label>
-            <input type="text" id="uploadInvoiceRegistrationNumber" placeholder="例：T1234567890123（Tから始まる13桁）">
-          </div>
-          <div style="display:flex; gap:12px;">
-            <div class="form-group" style="flex:1;">
+          <div class="form-row">
+            <div class="form-group" style="flex:1 1 140px;">
+              <label>通貨</label>
+              <select id="uploadCurrency"></select>
+            </div>
+            <div class="form-group" style="flex:1 1 140px;">
               <label>税率</label>
               <select id="uploadTaxRate"></select>
             </div>
-            <div class="form-group" style="flex:1;">
-              <label>金額（税抜）</label>
-              <input type="text" inputmode="numeric" autocomplete="off" id="uploadAmountExcl" placeholder="例：50,000円">
-            </div>
-            <div class="form-group" style="flex:1;">
-              <label>金額（税込）</label>
-              <input type="text" inputmode="numeric" autocomplete="off" id="uploadAmountIncl" placeholder="例：55,000円">
-            </div>
           </div>
-          <div class="form-group">
-            <label>取引日</label>
-            <input type="date" id="uploadTransactionDate">
+          <div class="form-row">
+            <div class="form-group" style="flex:1 1 140px;">
+              <label>金額（税抜）</label>
+              <input type="text" inputmode="numeric" autocomplete="off" id="uploadAmountExcl" placeholder="例：50,000">
+            </div>
+            <div class="form-group" style="flex:1 1 140px;">
+              <label>金額（税込）</label>
+              <input type="text" inputmode="numeric" autocomplete="off" id="uploadAmountIncl" placeholder="例：55,000">
+            </div>
           </div>
           <div class="form-group">
             <label>説明・備考</label>
@@ -331,15 +340,10 @@
         <label>表示名</label>
         <input type="text" id="detailDisplayName" required>
       </div>
-      <div class="form-group">
-        <label>書類種別</label>
-        <select id="detailUseTypeId"><option value="">未設定</option></select>
-      </div>
-      <!-- タグと発行／受領は横並び（画面が狭いときは自動で縦に折り返す） -->
       <div class="form-row">
         <div class="form-group" style="flex:2 1 200px;">
-          <label>タグ</label>
-          <div id="detailTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+          <label>書類種別</label>
+          <select id="detailUseTypeId"><option value="">未設定</option></select>
         </div>
         <div class="form-group" style="flex:1 1 140px;">
           <label>発行／受領 <span class="badge-required">必須</span></label>
@@ -351,33 +355,45 @@
         </div>
       </div>
       <div class="form-group">
+        <label>タグ</label>
+        <div id="detailTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
+      <div class="form-group">
         <div id="detailProjectPicker"></div>
       </div>
       <div class="form-group">
         <label>取引先</label>
         <input type="text" id="detailClient" placeholder="例：〇〇株式会社">
       </div>
-      <div class="form-group">
-        <label>適格事業者登録番号</label>
-        <input type="text" id="detailInvoiceRegistrationNumber" placeholder="例：T1234567890123（Tから始まる13桁）">
+      <div class="form-row">
+        <div class="form-group" style="flex:2 1 220px;">
+          <label>適格事業者登録番号（Tから始まる13桁）</label>
+          <input type="text" id="detailInvoiceRegistrationNumber" placeholder="例：T1234567890123">
+        </div>
+        <div class="form-group" style="flex:1 1 140px;">
+          <label>取引日</label>
+          <input type="date" id="detailTransactionDate">
+        </div>
       </div>
-      <div style="display:flex; gap:12px;">
-        <div class="form-group" style="flex:1;">
+      <div class="form-row">
+        <div class="form-group" style="flex:1 1 140px;">
+          <label>通貨</label>
+          <select id="detailCurrency"></select>
+        </div>
+        <div class="form-group" style="flex:1 1 140px;">
           <label>税率</label>
           <select id="detailTaxRate"></select>
         </div>
-        <div class="form-group" style="flex:1;">
-          <label>金額（税抜）</label>
-          <input type="text" inputmode="numeric" autocomplete="off" id="detailAmountExcl" placeholder="例：50,000円">
-        </div>
-        <div class="form-group" style="flex:1;">
-          <label>金額（税込）</label>
-          <input type="text" inputmode="numeric" autocomplete="off" id="detailAmountIncl" placeholder="例：55,000円">
-        </div>
       </div>
-      <div class="form-group">
-        <label>取引日</label>
-        <input type="date" id="detailTransactionDate">
+      <div class="form-row">
+        <div class="form-group" style="flex:1 1 140px;">
+          <label>金額（税抜）</label>
+          <input type="text" inputmode="numeric" autocomplete="off" id="detailAmountExcl" placeholder="例：50,000">
+        </div>
+        <div class="form-group" style="flex:1 1 140px;">
+          <label>金額（税込）</label>
+          <input type="text" inputmode="numeric" autocomplete="off" id="detailAmountIncl" placeholder="例：55,000">
+        </div>
       </div>
       <div class="form-group">
         <label>説明・備考</label>
