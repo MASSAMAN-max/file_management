@@ -64,10 +64,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); outlin
 .file-list-grid {
   display: grid;
   /* できるだけ横幅を詰めるため、各列は内容量に応じた最小限の幅にする */
-  grid-template-columns: 26px 58px 56px minmax(140px, 1fr) 84px 80px 62px 72px 100px 82px 78px 74px;
+  grid-template-columns: 26px 58px 56px minmax(140px, 1fr) 84px 80px 62px 72px 100px 82px 112px 74px;
   align-items: center;
   gap: 6px;
-  min-width: 950px;
+  min-width: 984px;
 }
 .file-list-header {
   font-size: 11px; font-weight: bold; color: #64748b; padding: 8px 10px;
@@ -124,6 +124,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); outlin
 /* 入力項目を横に並べる行（狭い画面では折り返す）。各項目の幅は flex で個別に指定する */
 .form-row { display: flex; flex-wrap: wrap; gap: 0 12px; }
 .form-row > .form-group { min-width: 0; }
+/* 日付入力欄は、どこをタップしてもカレンダーが開く（03_utils.js）ため、押せることが分かるようにする */
+input[type="date"] { cursor: pointer; }
 .form-group label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; color: #334155; }
 .form-group input, .form-group select, .form-group textarea { width: 100%; box-sizing: border-box; }
 .badge-required { background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-left: 6px; vertical-align: middle; }
