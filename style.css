@@ -63,10 +63,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); outlin
 .file-list-grid {
   display: grid;
   /* できるだけ横幅を詰めるため、各列は内容量に応じた最小限の幅にする */
-  grid-template-columns: 26px 58px 56px minmax(140px, 1fr) 84px 80px 62px 100px 82px 78px 74px;
+  grid-template-columns: 26px 58px 56px minmax(140px, 1fr) 84px 80px 62px 72px 100px 82px 78px 74px;
   align-items: center;
   gap: 6px;
-  min-width: 870px;
+  min-width: 950px;
 }
 .file-list-header {
   font-size: 11px; font-weight: bold; color: #64748b; padding: 8px 10px;
@@ -115,6 +115,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); outlin
 .modal-close-btn:hover { background: #fee2e2; color: #ef4444; }
 /* モーダルの見出し。下線の色は --modal-accent で指定する（既定は青） */
 .modal-title {
+  font-size: 20px; /* 既定（24px）より少し小さくする。全モーダルで共通 */
   margin: 0 36px 16px 0; color: #1e293b; padding-bottom: 10px;
   border-bottom: 3px solid var(--modal-accent, var(--primary));
 }
