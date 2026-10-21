@@ -25,7 +25,7 @@ window.openDetailModal = function(record) {
   document.getElementById("detailClient").value = record["取引先"] || "";
   document.getElementById("detailIssuedOrReceived").value = record["発行受領区分"] || "";
   document.getElementById("detailInvoiceRegistrationNumber").value = record["適格事業者登録番号"] || "";
-  setTaxInputValues("detailTaxRate", "detailAmountExcl", "detailAmountIncl", record["税率"], record["金額（税抜）"], record["金額（税込）"]);
+  setTaxInputValues("detailTaxRate", "detailAmountExcl", "detailAmountIncl", "detailCurrency", record["通貨"], record["税率"], record["金額（税抜）"], record["金額（税込）"]);
   document.getElementById("detailTransactionDate").value = toDateInputValue(record["取引日"]);
   document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
 
@@ -79,6 +79,7 @@ const DETAIL_CHANGE_FIELDS = [
   { key: "client", label: "取引先" },
   { key: "issuedOrReceived", label: "発行／受領" },
   { key: "invoiceRegistrationNumber", label: "適格事業者登録番号" },
+  { key: "currency", label: "通貨" },
   { key: "taxRate", label: "税率" },
   { key: "amountExcl", label: "金額（税抜）" },
   { key: "amountIncl", label: "金額（税込）" },
@@ -98,6 +99,7 @@ function collectDetailFormData() {
     client: document.getElementById("detailClient").value.trim(),
     issuedOrReceived: document.getElementById("detailIssuedOrReceived").value,
     invoiceRegistrationNumber: document.getElementById("detailInvoiceRegistrationNumber").value.trim(),
+    currency: document.getElementById("detailCurrency").value,
     taxRate: document.getElementById("detailTaxRate").value,
     amountExcl: getAmountInputValue("detailAmountExcl"),
     amountIncl: getAmountInputValue("detailAmountIncl"),
@@ -112,13 +114,17 @@ function toComparableValue(value) {
   return Array.isArray(value) ? [...value].sort().join(",") : String(value);
 }
 
-/** 確認画面に出す値の文字列にする（IDは名前に、金額は「12,345円」に直す。長い文字は省略する） */
-function formatDetailChangeValue(key, value) {
+/**
+ * 確認画面に出す値の文字列にする（IDは名前に、金額は「¥ 12,345」に直す。長い文字は省略する）
+ * @param {string} currencyCode 金額の表示に使う通貨（変更前の値には変更前の通貨、変更後の値には変更後の通貨を渡す）
+ */
+function formatDetailChangeValue(key, value, currencyCode) {
   if (key === "tagIds") return getTagLabels(value.join(",")).join("、") || "（なし）";
   if (key === "caseNos") return value.join(", ") || "（なし）";
   if (key === "useTypeId") return getUseTypeLabel(value) || "（未設定）";
+  if (key === "currency") return getCurrencyLabel(getCurrency(value));
   if (key === "taxRate") return value === TAX_RATE_NON_TAXABLE ? value : `${value}%`;
-  if (key === "amountExcl" || key === "amountIncl") return value === "" ? "（空）" : formatAmountText(value);
+  if (key === "amountExcl" || key === "amountIncl") return value === "" ? "（空）" : formatAmountText(value, currencyCode);
   if (value === "") return "（空）";
   const chars = [...String(value)];
   return chars.length > 30 ? chars.slice(0, 30).join("") + "…" : String(value);
@@ -132,8 +138,8 @@ function getDetailChanges() {
     .filter(field => toComparableValue(current[field.key]) !== toComparableValue(detailInitialData[field.key]))
     .map(field => ({
       label: field.label,
-      before: formatDetailChangeValue(field.key, detailInitialData[field.key]),
-      after: formatDetailChangeValue(field.key, current[field.key])
+      before: formatDetailChangeValue(field.key, detailInitialData[field.key], detailInitialData.currency),
+      after: formatDetailChangeValue(field.key, current[field.key], current.currency)
     }));
 }
 
@@ -160,7 +166,7 @@ async function confirmDetailChanges(changes) {
   return result.isConfirmed;
 }
 
-bindTaxInputs("detailTaxRate", "detailAmountExcl", "detailAmountIncl");
+bindTaxInputs("detailTaxRate", "detailAmountExcl", "detailAmountIncl", "detailCurrency");
 
 // 入力欄・セレクト・タグ・案件の変更を検知して、「更新する」ボタンの有効／無効を切り替える
 ["input", "change"].forEach(eventType => {
