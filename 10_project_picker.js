@@ -75,11 +75,13 @@ function filterProjects(filters) {
  * 案件選択部品を、指定した要素の中に作る。
  * @param {string} containerId 部品を表示する要素のid
  * @param {string[]} selectedList 選択中の案件Noの配列（呼び出し元と同じ配列を直接書き換える）
+ * @param {string} clientInputId 案件を選んだとき、その発注元を自動入力する「取引先」入力欄のid
  * @return {{render: function, reset: function}} render：再描画（絞り込みは保つ）／reset：絞り込みを初期状態に戻して再描画
  */
-function createProjectPicker(containerId, selectedList) {
+function createProjectPicker(containerId, selectedList, clientInputId) {
   const container = document.getElementById(containerId);
   const filters = { client: "", contact: "", keyword: "" };
+  let lastAutoClient = ""; // 直前に自動入力した取引先（手入力した内容を上書きしないための目印）
 
   container.innerHTML = `
     <div class="project-picker">
@@ -157,7 +159,7 @@ function createProjectPicker(containerId, selectedList) {
     if (matched.length === 0) {
       statusEl.textContent = "該当する案件がありません。";
     } else if (matched.length > PROJECT_PICKER_MAX_ROWS) {
-      statusEl.textContent = `該当 ${matched.length} 件のうち、先頭 ${PROJECT_PICKER_MAX_ROWS} 件を表示しています。発注元や検索語でさらに絞り込んでください。`;
+      statusEl.textContent = `該当案件の先頭 ${PROJECT_PICKER_MAX_ROWS} 件を表示しています。発注元や検索語でさらに絞り込んでください。`;
     } else {
       statusEl.textContent = `該当 ${matched.length} 件`;
     }
@@ -182,6 +184,21 @@ function createProjectPicker(containerId, selectedList) {
     `).join("");
   }
 
+  /**
+   * 選んだ案件の発注元を、「取引先」欄へ自動入力する。
+   * 取引先が空、または前回の自動入力のままのときだけ入れる（手入力した内容・OCRの結果は上書きしない）。
+   * 複数の案件を選んだ場合は、最後に選んだ案件の発注元になる。発注元が空の案件では何もしない。
+   */
+  function fillClientFromProject(project) {
+    if (!project || !project.client) return;
+    const input = document.getElementById(clientInputId);
+    const current = input.value.trim();
+    if (current === "" || current === lastAutoClient) {
+      input.value = project.client;
+      lastAutoClient = project.client;
+    }
+  }
+
   function render() {
     renderClientOptions();
     renderContactOptions();
@@ -190,6 +207,7 @@ function createProjectPicker(containerId, selectedList) {
   }
 
   function reset() {
+    lastAutoClient = ""; // モーダルを開き直したら、入力済みの取引先は手入力として扱う
     filters.client = "";
     filters.contact = "";
     filters.keyword = "";
@@ -218,7 +236,11 @@ function createProjectPicker(containerId, selectedList) {
   listEl.addEventListener("click", (e) => {
     const item = e.target.closest("[data-no]");
     if (!item || item.disabled) return;
-    if (!selectedList.includes(item.dataset.no)) selectedList.push(item.dataset.no);
+    const caseNo = item.dataset.no;
+    if (!selectedList.includes(caseNo)) {
+      selectedList.push(caseNo);
+      fillClientFromProject(projectMapByNo.get(caseNo));
+    }
     renderChips();
     renderList(true);
   });
@@ -242,8 +264,8 @@ function createProjectPicker(containerId, selectedList) {
 
 // 登録モーダル・詳細モーダルの案件選択部品（読み込み時に1回だけ作る）
 const projectPickers = {
-  upload: createProjectPicker("uploadProjectPicker", pendingLinks),
-  detail: createProjectPicker("detailProjectPicker", detailLinks)
+  upload: createProjectPicker("uploadProjectPicker", pendingLinks, "uploadClient"),
+  detail: createProjectPicker("detailProjectPicker", detailLinks, "detailClient")
 };
 
 /** 案件マスタの読み込み状況が変わったときに、全ての部品を描画し直す（絞り込みは保つ） */
