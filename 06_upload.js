@@ -99,8 +99,8 @@ async function handleCreateSubmit(event) {
     issuedOrReceived: document.getElementById("uploadIssuedOrReceived").value,
     invoiceRegistrationNumber: document.getElementById("uploadInvoiceRegistrationNumber").value.trim(),
     taxRate: document.getElementById("uploadTaxRate").value,
-    amountExcl: document.getElementById("uploadAmountExcl").value.trim(),
-    amountIncl: document.getElementById("uploadAmountIncl").value.trim(),
+    amountExcl: getAmountInputValue("uploadAmountExcl"),
+    amountIncl: getAmountInputValue("uploadAmountIncl"),
     transactionDate: document.getElementById("uploadTransactionDate").value,
     description: document.getElementById("uploadDescription").value.trim()
   };
