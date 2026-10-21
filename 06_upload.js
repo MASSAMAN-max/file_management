@@ -7,8 +7,9 @@
  *   仮登録（1段目）→ Drive保存＋OCR（2段目）の送信処理
  *
  * 【複数ファイルのときの動き】
- *   ・書類種別・発行／受領・タグ・通貨・税率・案件No・OCR の設定は、全ファイルに共通で適用する
- *   ・表示名・取引先・金額などの詳細項目は、ファイルごとに違うため入力できない（登録後に1件ずつ編集する）
+ *   ・書類種別・発行／受領・タグ・案件No・OCR の設定は、全ファイルに共通で適用する
+ *   ・表示名・取引先・通貨・税率・金額などの詳細項目は入力できない（登録後に1件ずつ編集する）。
+ *     通貨は円、税率は10%で登録される
  *   ・サーバーの負荷と実行時間を考え、1件ずつ順番に処理する（並列にはしない）
  *   ・途中で失敗したファイルがあっても、残りは続けて処理し、最後に失敗したファイルをまとめて知らせる
  *
@@ -78,7 +79,7 @@ function renderUploadFileSummary() {
     return;
   }
   summaryEl.style.display = "block";
-  summaryEl.textContent = `${count}件のファイルを選択中です。書類種別・発行／受領・タグ・通貨・税率・案件・OCRの設定は全ファイルに共通で適用されます。表示名・取引先・金額などは、登録後に1件ずつ編集してください。`;
+  summaryEl.textContent = `${count}件のファイルを選択中です。書類種別・発行／受領・タグ・案件・OCRの設定は全ファイルに共通で適用されます。通貨は円、税率は10%で登録されます。表示名・取引先・金額などは、登録後に1件ずつ編集してください。`;
 }
 
 // =================================================================
@@ -87,7 +88,8 @@ function renderUploadFileSummary() {
 //   ・OCRがオン：OCR結果での自動入力とユーザー手入力が競合しないようにするため
 //   ・複数ファイルを選択中：詳細項目はファイルごとに違い、全ファイル共通では入力できないため
 // どちらでもない場合（OCRオフ・ファイル1件以下）は開いた状態にし、手入力できるようにする。
-// ※ 書類種別・発行／受領・タグ・通貨・税率・案件は詳細項目の外にあり、常に操作できる。
+// ※ 書類種別・発行／受領・タグ・案件は詳細項目の外にあり、常に操作できる。
+// ※ 通貨・税率は詳細項目の中にあるため、折りたたんでいる間は円・税率10%固定で登録される。
 // =================================================================
 window.applyUploadDetailLockState = function() {
   const useOcr = document.getElementById("uploadUseOcr").checked;
@@ -132,28 +134,35 @@ function fileToBase64(file) {
 
 /**
  * 入力欄の値を、仮登録APIに渡す項目にまとめる。
- * 複数ファイルのときは、ファイルごとに違う詳細項目（取引先・金額など）を空にして渡す
- * （全ファイルに同じ金額などが登録されるのを防ぐ。OCRがオンなら読み取り結果が入る）。
+ * 詳細項目（取引先・通貨・税率・金額など）は、次のとおり扱いを分ける。
+ *   ・複数ファイル：ファイルごとに違うため空にして渡す（全ファイルに同じ金額などが登録されるのを防ぐ）
+ *   ・OCRオン：通貨・税率は空にして渡す（サーバー側で、円・税率10%になる）。それ以外の詳細項目は入力欄の値を渡す
+ *   ・OCRオフ：入力欄の値をそのまま渡す
+ * @param {boolean} isMultiple 複数ファイルの登録か
+ * @param {boolean} useOcr OCRがオンか
  */
-function collectUploadEntryFields(isMultiple) {
+function collectUploadEntryFields(isMultiple, useOcr) {
   const commonFields = {
     useTypeId: document.getElementById("uploadUseTypeId").value.trim(),
     tagIds: getCheckedTagIdsIn("uploadTagCheckboxes"),
-    issuedOrReceived: document.getElementById("uploadIssuedOrReceived").value,
-    currency: document.getElementById("uploadCurrency").value,
-    taxRate: document.getElementById("uploadTaxRate").value
+    issuedOrReceived: document.getElementById("uploadIssuedOrReceived").value
   };
-  const detailFields = isMultiple
-    ? { client: "", invoiceRegistrationNumber: "", amountExcl: "", amountIncl: "", transactionDate: "", description: "" }
-    : {
-        client: document.getElementById("uploadClient").value.trim(),
-        invoiceRegistrationNumber: document.getElementById("uploadInvoiceRegistrationNumber").value.trim(),
-        amountExcl: getAmountInputValue("uploadAmountExcl"),
-        amountIncl: getAmountInputValue("uploadAmountIncl"),
-        transactionDate: document.getElementById("uploadTransactionDate").value,
-        description: document.getElementById("uploadDescription").value.trim()
-      };
-  return Object.assign(commonFields, detailFields);
+  if (isMultiple) {
+    return Object.assign(commonFields, {
+      client: "", invoiceRegistrationNumber: "", currency: "", taxRate: "",
+      amountExcl: "", amountIncl: "", transactionDate: "", description: ""
+    });
+  }
+  return Object.assign(commonFields, {
+    client: document.getElementById("uploadClient").value.trim(),
+    invoiceRegistrationNumber: document.getElementById("uploadInvoiceRegistrationNumber").value.trim(),
+    currency: useOcr ? "" : document.getElementById("uploadCurrency").value,
+    taxRate: useOcr ? "" : document.getElementById("uploadTaxRate").value,
+    amountExcl: getAmountInputValue("uploadAmountExcl"),
+    amountIncl: getAmountInputValue("uploadAmountIncl"),
+    transactionDate: document.getElementById("uploadTransactionDate").value,
+    description: document.getElementById("uploadDescription").value.trim()
+  });
 }
 
 /**
@@ -192,7 +201,7 @@ async function handleCreateSubmit(event) {
 
   const isMultiple = files.length > 1;
   const useOcr = document.getElementById("uploadUseOcr").checked;
-  const entryFields = collectUploadEntryFields(isMultiple);
+  const entryFields = collectUploadEntryFields(isMultiple, useOcr);
   const displayName = isMultiple ? "" : document.getElementById("uploadDisplayName").value.trim(); // 空ならファイル名が表示名になる
   const caseNos = pendingLinks.slice();
 
