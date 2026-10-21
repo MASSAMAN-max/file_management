@@ -67,7 +67,7 @@
       <span style="display:flex; align-items:center; gap:8px;">
         <span class="material-symbols-outlined" style="color:var(--primary); font-size:34px;">folder_open</span> ファイル保存アプリ
       </span>
-      <button class="btn btn-primary" onclick="openCreateModal()">
+      <button class="btn btn-success" onclick="openCreateModal()">
         <span class="material-symbols-outlined">add_circle</span> 新規登録
       </button>
     </div>
@@ -223,17 +223,20 @@
         <label>書類種別</label>
         <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
       </div>
-      <div class="form-group">
-        <label>タグ</label>
-        <div id="uploadTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
-      </div>
-      <div class="form-group">
-        <label>発行／受領 <span class="badge-required">必須</span></label>
-        <select id="uploadIssuedOrReceived" required>
-          <option value="">選択してください</option>
-          <option value="発行">発行</option>
-          <option value="受領">受領</option>
-        </select>
+      <!-- タグと発行／受領は横並び（画面が狭いときは自動で縦に折り返す） -->
+      <div class="form-row">
+        <div class="form-group" style="flex:2 1 200px;">
+          <label>タグ</label>
+          <div id="uploadTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+        </div>
+        <div class="form-group" style="flex:1 1 140px;">
+          <label>発行／受領 <span class="badge-required">必須</span></label>
+          <select id="uploadIssuedOrReceived" required>
+            <option value="">選択してください</option>
+            <option value="発行">発行</option>
+            <option value="受領">受領</option>
+          </select>
+        </div>
       </div>
       <!-- 案件Noの紐付けはOCRで自動入力される項目ではないため、OCRのオン/オフに関わらず常に入力できる -->
       <div class="form-group">
@@ -328,19 +331,13 @@
         <label>書類種別</label>
         <select id="detailUseTypeId"><option value="">未設定</option></select>
       </div>
-      <div class="form-group">
-        <label>タグ</label>
-        <div id="detailTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
-      </div>
-      <div class="form-group">
-        <div id="detailProjectPicker"></div>
-      </div>
-      <div style="display:flex; gap:12px;">
-        <div class="form-group" style="flex:1;">
-          <label>取引先</label>
-          <input type="text" id="detailClient" placeholder="例：〇〇株式会社">
+      <!-- タグと発行／受領は横並び（画面が狭いときは自動で縦に折り返す） -->
+      <div class="form-row">
+        <div class="form-group" style="flex:2 1 200px;">
+          <label>タグ</label>
+          <div id="detailTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
         </div>
-        <div class="form-group" style="flex:1;">
+        <div class="form-group" style="flex:1 1 140px;">
           <label>発行／受領 <span class="badge-required">必須</span></label>
           <select id="detailIssuedOrReceived" required>
             <option value="">選択してください</option>
@@ -348,6 +345,13 @@
             <option value="受領">受領</option>
           </select>
         </div>
+      </div>
+      <div class="form-group">
+        <div id="detailProjectPicker"></div>
+      </div>
+      <div class="form-group">
+        <label>取引先</label>
+        <input type="text" id="detailClient" placeholder="例：〇〇株式会社">
       </div>
       <div class="form-group">
         <label>適格事業者登録番号</label>
