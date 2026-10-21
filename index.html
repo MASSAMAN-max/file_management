@@ -2,11 +2,15 @@
 <html>
 <head>
 <!-- favicon未指定だとブラウザが自動的に /favicon.ico を要求し404が発生するため、空アイコンで抑制する -->
-<link rel="icon" href="data:,">
+<link rel="manifest" href="/file_management.json">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-512.png">
 <meta name="theme-color" content="#ffffff">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- ベースURL設定：リンクを新タブで開かない -->
+<base target="_top">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <!-- 環境依存パラメータ（config.js）はメイン処理より前に読み込む -->
