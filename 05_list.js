@@ -172,9 +172,9 @@ function displayResults(records) {
     const useTypeLabel = getUseTypeLabel(record["用途種別ID"]);
     const tagLabels = getTagLabels(record["タグID一覧"]);
     const statusLabel = status === "仮登録" ? (isLocked ? "処理中" : "未") : "済";
-    // 一覧の金額は税込を表示する（0円も表示する）
+    // 一覧の金額は税込を、その書類の通貨の表記（¥ 12,345／$ 1,234.50 など）で表示する（0円も表示する）
     const amountIncl = record["金額（税込）"];
-    const amountText = (amountIncl === "" || amountIncl === null || amountIncl === undefined) ? "" : `¥${Number(amountIncl).toLocaleString()}`;
+    const amountText = (amountIncl === "" || amountIncl === null || amountIncl === undefined) ? "" : formatAmountText(amountIncl, record["通貨"]);
     const transactionDateText = formatDateOnly(record["取引日"]);
     const caseNoText = parseCaseNos(record["案件No"]).join(", "); // 複数の案件は「12, 15」のように表示する
 
