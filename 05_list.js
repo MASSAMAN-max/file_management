@@ -176,6 +176,7 @@ function displayResults(records) {
     const amountIncl = record["金額（税込）"];
     const amountText = (amountIncl === "" || amountIncl === null || amountIncl === undefined) ? "" : `¥${Number(amountIncl).toLocaleString()}`;
     const transactionDateText = formatDateOnly(record["取引日"]);
+    const caseNoText = parseCaseNos(record["案件No"]).join(", "); // 複数の案件は「12, 15」のように表示する
 
     const row = document.createElement("div");
     row.className = "file-list-grid file-list-row" + (isLocked ? " is-locked" : "");
@@ -188,6 +189,7 @@ function displayResults(records) {
       <div>${textOrDash(useTypeLabel)}</div>
       <div title="${escapeHtml(tagLabels.join('、'))}">${textOrDash(tagLabels.join('、'))}</div>
       <div>${textOrDash(record["発行受領区分"])}</div>
+      <div title="${escapeHtml(caseNoText)}">${textOrDash(caseNoText)}</div>
       <div>${textOrDash(record["取引先"])}</div>
       <div>${textOrDash(transactionDateText)}</div>
       <div class="file-list-cell-amount">${textOrDash(amountText)}</div>
