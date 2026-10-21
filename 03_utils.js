@@ -181,12 +181,61 @@ function floorDiv(dividend, divisor) {
   return (dividend - (dividend % divisor)) / divisor;
 }
 
-/** 入力欄の文字列を整数（円）にする。空・不正な値・負の値は null */
+/** 全角数字を半角にする（金額欄に全角で入力・貼り付けされても受け付けるため） */
+function toHalfWidthDigits(text) {
+  return String(text === null || text === undefined ? "" : text)
+    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+}
+
+/**
+ * 金額欄の文字列から、数字だけを取り出す（「12,345円」→「12345」）。
+ * 全角数字は半角にし、カンマ・空白・「円」は除く。小数（例：1,234.5）は1円未満を切り捨てる。
+ */
+function toAmountDigits(text) {
+  const half = toHalfWidthDigits(text).replace(/[,，\s円]/g, "");
+  const decimal = half.match(/^(\d+)\.\d*$/);
+  return decimal ? decimal[1] : half.replace(/\D/g, "");
+}
+
+/** 金額欄の値を整数（円）にする。空は null */
 function parseAmountInput(text) {
-  const trimmed = String(text === null || text === undefined ? "" : text).trim();
-  if (trimmed === "") return null;
-  const num = Number(trimmed);
-  return isFinite(num) && num >= 0 ? Math.floor(num) : null;
+  const digits = toAmountDigits(text);
+  return digits === "" ? null : Number(digits);
+}
+
+/** 金額を「12,345円」の表示にする */
+function formatAmountText(amount) {
+  return `${Number(amount).toLocaleString("ja-JP")}円`;
+}
+
+/** 金額欄に値を入れる（表示は「12,345円」）。空（null・""）なら欄を空にする */
+function setAmountInputValue(inputEl, amount) {
+  inputEl.value = (amount === null || amount === undefined || amount === "") ? "" : formatAmountText(amount);
+}
+
+/** 金額欄の値を、サーバーへ送る「数字だけの文字列」にする（空なら ""。記録は数値のみ） */
+function getAmountInputValue(inputId) {
+  return toAmountDigits(document.getElementById(inputId).value);
+}
+
+/**
+ * 金額欄を「入力中は数字だけ、入力が終わったら 12,345円」の動きにする。
+ * 入力中にカンマや「円」が入ると、カーソルの位置がずれて打ち間違えやすいため。
+ * @param {function} onChange 金額が入力されたときに呼ぶ処理（もう一方の金額の自動計算など）
+ */
+function bindAmountInput(inputEl, onChange) {
+  const sanitize = () => {
+    const digits = toAmountDigits(inputEl.value);
+    if (inputEl.value !== digits) inputEl.value = digits; // 変わるときだけ代入する（カーソル位置を保つため）
+  };
+  inputEl.addEventListener("focus", sanitize);
+  inputEl.addEventListener("input", (e) => {
+    if (e.isComposing) return; // 日本語入力の変換中は触らない
+    sanitize();
+    onChange();
+  });
+  inputEl.addEventListener("compositionend", () => { sanitize(); onChange(); });
+  inputEl.addEventListener("blur", () => setAmountInputValue(inputEl, parseAmountInput(inputEl.value)));
 }
 
 /** 税率欄の値（"不課税" または "1"〜"10"）を、計算用の％の数値にする */
@@ -199,10 +248,10 @@ function recalcTaxAmounts(rateEl, exclEl, inclEl) {
   const percent = taxRateToPercent(rateEl.value);
   if (rateEl.dataset.base === "excl") {
     const excl = parseAmountInput(exclEl.value);
-    inclEl.value = excl === null ? "" : floorDiv(excl * (100 + percent), 100);
+    setAmountInputValue(inclEl, excl === null ? null : floorDiv(excl * (100 + percent), 100));
   } else {
     const incl = parseAmountInput(inclEl.value);
-    exclEl.value = incl === null ? "" : floorDiv(incl * 100, 100 + percent);
+    setAmountInputValue(exclEl, incl === null ? null : floorDiv(incl * 100, 100 + percent));
   }
 }
 
@@ -217,8 +266,8 @@ function bindTaxInputs(rateId, exclId, inclId) {
   rateEl.value = DEFAULT_TAX_RATE;
   rateEl.dataset.base = "incl";
 
-  exclEl.addEventListener("input", () => { rateEl.dataset.base = "excl"; recalcTaxAmounts(rateEl, exclEl, inclEl); });
-  inclEl.addEventListener("input", () => { rateEl.dataset.base = "incl"; recalcTaxAmounts(rateEl, exclEl, inclEl); });
+  bindAmountInput(exclEl, () => { rateEl.dataset.base = "excl"; recalcTaxAmounts(rateEl, exclEl, inclEl); });
+  bindAmountInput(inclEl, () => { rateEl.dataset.base = "incl"; recalcTaxAmounts(rateEl, exclEl, inclEl); });
   rateEl.addEventListener("change", () => recalcTaxAmounts(rateEl, exclEl, inclEl));
 }
 
@@ -232,8 +281,8 @@ function setTaxInputValues(rateId, exclId, inclId, taxRate, amountExcl, amountIn
   rateEl.value = rateText;
   if (rateEl.value !== rateText || rateText === "") rateEl.value = DEFAULT_TAX_RATE; // リストにない値は選択できないため
   rateEl.dataset.base = "incl";
-  document.getElementById(exclId).value = (amountExcl === null || amountExcl === undefined) ? "" : amountExcl;
-  document.getElementById(inclId).value = (amountIncl === null || amountIncl === undefined) ? "" : amountIncl;
+  setAmountInputValue(document.getElementById(exclId), amountExcl);
+  setAmountInputValue(document.getElementById(inclId), amountIncl);
 }
 
 // =================================================================
@@ -291,3 +340,76 @@ Object.keys(LIST_MODAL_CLOSERS).forEach(id => {
     if (e.target === overlay && pressedOnOverlay) LIST_MODAL_CLOSERS[id]();
   });
 });
+
+// =================================================================
+// 音声入力（「説明・備考」欄のマイクボタン）
+// 他アプリの実装を参考にした。ブラウザの音声認識（Web Speech API）を使うため、Chrome・Edge・Safari で使える。
+// 使い方：<div class="voice-input-wrapper"><textarea></textarea><button onclick="startVoiceInput(this)">…</button></div>
+// =================================================================
+function startVoiceInput(button) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    Swal.fire({
+      icon: 'warning',
+      title: '非対応',
+      text: 'お使いのブラウザは音声入力に対応していません。',
+      confirmButtonText: '了解'
+    });
+    return;
+  }
+
+  // 備考欄は <textarea> のため、input だけでなく textarea も検索対象にする
+  const input = button.closest('.voice-input-wrapper').querySelector('input, textarea');
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'ja-JP';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+
+  // 聴取中であることが分かるよう、入力欄の色を変える
+  input.style.backgroundColor = '#FFF3E0';
+  input.style.borderColor = '#FF9800';
+
+  // 音声認識が「実際に始まってから」ボタンを無効化する（許可ダイアログで止まった場合に、押せなくならないため）
+  recognition.onstart = () => {
+    button.classList.add('recording');
+    button.innerHTML = '<span class="material-symbols-outlined" style="animation: blink 1s infinite;">mic</span> 聴取中...';
+    button.disabled = true;
+  };
+
+  recognition.onresult = (event) => {
+    let transcript = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        transcript += event.results[i][0].transcript;
+      }
+    }
+    if (transcript) {
+      input.value = (input.value + transcript).trim();
+      // 入力欄の変更を、フォームへ知らせる（詳細モーダルの「変更の有無」の検知に必要）
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error:', event.error); // 原因調査用
+    button.classList.remove('recording');
+    input.style.backgroundColor = '';
+    input.style.borderColor = '';
+    Swal.fire({
+      icon: 'error',
+      title: '音声認識失敗',
+      text: 'もう一度お試しください。',
+      confirmButtonText: '了解'
+    });
+  };
+
+  recognition.onend = () => {
+    button.classList.remove('recording');
+    button.innerHTML = '<span class="material-symbols-outlined">mic</span>';
+    button.disabled = false;
+    input.style.backgroundColor = '';
+    input.style.borderColor = '';
+  };
+
+  recognition.start();
+}
