@@ -52,6 +52,8 @@ let isHandlingAuthExpired = false;
 // 案件マスタ（紐付け入力欄の選択肢）。ログイン後に画面を表示してから、裏で読み込む（10_project_picker.js）
 let projectListCache = [];             // [{no, name, client, contact, __searchText}]
 let projectMapByNo = new Map();        // 案件No → 案件（チップに案件名を表示するための索引）
+let clientListCache = [];              // 発注元の選択肢（あいうえお順）：[{name, gyou}]。ログインマスターの「発注元」「発注元ヨミ」から作る
+let contactsByClient = new Map();      // 発注元 → 担当者の一覧（ログインマスターの行順）
 let projectListStatus = "idle";        // idle（未取得）／loading（読込中）／ready（取得済み）／error（失敗）
 let projectListErrorMessage = "";      // error のときに部品へ表示するメッセージ
 
