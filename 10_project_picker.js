@@ -182,6 +182,7 @@ function createProjectPicker(containerId, selectedList, options) {
       </div>
     </div>
   `;
+  const pickerEl = container.querySelector('.project-picker'); // 枠（開閉に合わせて色を変える）
   const toggleBtn = container.querySelector('[data-role="toggle"]');
   const iconEl = container.querySelector('[data-role="icon"]');
   const bodyEl = container.querySelector('[data-role="body"]');
@@ -195,6 +196,7 @@ function createProjectPicker(containerId, selectedList, options) {
   function setOpen(open) {
     isOpen = open;
     bodyEl.style.display = open ? "block" : "none";
+    pickerEl.classList.toggle("is-open", open); // 開いている間は枠を青くして、範囲を強調する
     iconEl.style.transform = open ? "rotate(180deg)" : "";
     toggleBtn.setAttribute("aria-expanded", String(open));
   }
