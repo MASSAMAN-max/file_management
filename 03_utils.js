@@ -407,16 +407,64 @@ function renderUseTypeSelectInto(selectId, selectedValue, placeholderText) {
   select.value = selectedValue || "";
 }
 
+/**
+ * タグ選択部品（登録モーダル・詳細モーダルで共通）。
+ * 【画面】「タグ」のタブ（初期状態は閉じている。押すと開閉する）
+ *           ├ タブの外：選択済みのタグ（常に表示）
+ *           └ タブの中：タグごとのトグルボタン（押すごとに選択／解除。複数選択可）
+ * 【仕組み】トグルボタンの実体は、見えないチェックボックス（<label>の中の <input type="checkbox">）。
+ *   そのため、保存時の取得（getCheckedTagIdsIn）や、詳細モーダルの変更検知（フォームの change イベント）は、
+ *   以前のチェックボックスのときと同じ仕組みでそのまま動く。
+ * 【注意】タブの開閉と選択済み表示の更新は、この関数の下にあるイベント（document への1回だけの登録）が行う。
+ */
 function renderTagCheckboxesInto(containerId, selectedTagIds) {
   const area = document.getElementById(containerId);
-  area.innerHTML = allTagsCache.length === 0
-    ? '<span style="font-size:13px; color:#94a3b8;">タグ未登録です（上部「マスタ管理」から追加できます）</span>'
-    : allTagsCache.map(tag => `
-        <label style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; padding:4px 10px; border-radius:12px; font-size:13px;">
-          <input type="checkbox" value="${escapeHtml(tag.tagId)}" ${selectedTagIds.includes(tag.tagId) ? "checked" : ""}> ${escapeHtml(tag.tagName)}
-        </label>
-      `).join('');
+  if (allTagsCache.length === 0) {
+    area.innerHTML = '<span style="font-size:13px; color:#94a3b8;">タグ未登録です（上部「マスタ管理」から追加できます）</span>';
+    return;
+  }
+  area.innerHTML = `
+    <div class="tag-picker">
+      <button type="button" class="project-picker-toggle tag-picker-toggle" aria-expanded="false">
+        <span>タグ（複数選択可）</span>
+        <span class="material-symbols-outlined project-picker-toggle-icon">expand_more</span>
+      </button>
+      <div class="tag-picker-selected"></div>
+      <div class="tag-picker-body">
+        ${allTagsCache.map(tag => `
+          <label class="tag-toggle">
+            <input type="checkbox" value="${escapeHtml(tag.tagId)}" ${selectedTagIds.includes(tag.tagId) ? "checked" : ""}>
+            <span class="tag-toggle-text">${escapeHtml(tag.tagName)}</span>
+          </label>
+        `).join("")}
+      </div>
+    </div>
+  `;
+  updateTagPickerSelected(area.querySelector(".tag-picker"));
 }
+
+/** タブの外に表示する「選択済みのタグ」を、現在のトグルの状態に合わせて作り直す */
+function updateTagPickerSelected(picker) {
+  const names = Array.from(picker.querySelectorAll(".tag-toggle input:checked"))
+    .map(input => input.nextElementSibling.textContent);
+  picker.querySelector(".tag-picker-selected").innerHTML =
+    names.map(name => `<span class="tag-selected-chip">${escapeHtml(name)}</span>`).join("");
+}
+
+// タグ選択部品の操作。描画のたびに中身が作り直されるため、各ボタンではなく document で1回だけ受け取る
+document.addEventListener("click", (e) => {
+  const toggleButton = e.target.closest(".tag-picker-toggle");
+  if (!toggleButton) return;
+  const picker = toggleButton.closest(".tag-picker");
+  const willOpen = !picker.classList.contains("is-open");
+  picker.classList.toggle("is-open", willOpen);
+  toggleButton.setAttribute("aria-expanded", String(willOpen));
+});
+
+document.addEventListener("change", (e) => {
+  if (!e.target.matches(".tag-toggle input")) return;
+  updateTagPickerSelected(e.target.closest(".tag-picker"));
+});
 
 function getCheckedTagIdsIn(containerId) {
   return Array.from(document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)).map(el => el.value);
