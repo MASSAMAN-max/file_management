@@ -41,6 +41,8 @@ let pendingLoginCredentials = null;
 let allRecordsCache = [];
 let allTagsCache = [];
 let allUseTypesCache = [];
+// 一覧の現在のページ（1始まり）。ページ切り替え・新しい条件での検索で変わる（05_list.js）
+let currentListPage = 1;
 // ログイン中のユーザーの権限（「管理者」を表す定数 ADMIN_PERMISSION は 01_config.js にある）
 let currentPermission = "";
 function isAdminUser() { return currentPermission === ADMIN_PERMISSION; }
