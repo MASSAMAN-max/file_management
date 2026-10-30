@@ -5,6 +5,7 @@
  * 【役割】
  *   ・ファイル一覧の絞り込み（キーワード・案件No・種別・タグ・日付など）と表示
  *   ・検索条件のドロップダウンの生成
+ *   ・新しい順（作成日時の降順）への並び替えと、50件ずつのページ切り替え
  *   ・チェックした複数ファイルの一括操作（ZIPダウンロード・ゴミ箱へ移動）
  *
  * 【読み込み順】04_api_auth.js の後。
@@ -68,6 +69,25 @@ function getSearchText(record) {
   return record.__searchText;
 }
 
+// 一覧に1ページで表示する件数
+const LIST_PAGE_SIZE = 50;
+
+/** 並び替え用の作成日時（ミリ秒）。解釈できない値は0（＝最も古い扱い）。レコードごとに1回だけ求めて使い回す */
+function getCreatedTime(record) {
+  if (record.__createdTime === undefined) {
+    const time = new Date(record["作成日時"]).getTime();
+    record.__createdTime = isNaN(time) ? 0 : time;
+  }
+  return record.__createdTime;
+}
+
+/** 作成日時の新しい順（降順）に並べた、新しい配列を返す。作成日時が同じ場合はファイルIDの大きい順 */
+function sortRecordsNewestFirst(records) {
+  return [...records].sort((a, b) =>
+    getCreatedTime(b) - getCreatedTime(a) ||
+    String(b["ファイルID"]).localeCompare(String(a["ファイルID"]), "ja", { numeric: true }));
+}
+
 function filterRecordsClientSide(records, filters) {
   const { caseNo, keyword, useType, tag, issuedOrReceived, client, uploader,
           transactionStart, transactionEnd, createdStart, createdEnd } = filters;
@@ -116,6 +136,9 @@ function filterRecordsClientSide(records, filters) {
   });
 }
 
+// 現在の検索条件で一覧を表示し直す。現在のページは保つ。
+// （再読込やゴミ箱移動のあとに、見ていたページが1ページ目に戻らないようにするため。
+//   ページ数が減って今のページが無くなった場合は、displayResults が最後のページに直す）
 window.search = function() {
   const filters = {
     caseNo: document.getElementById("filterCaseNo").value.trim(),
@@ -130,7 +153,13 @@ window.search = function() {
     createdStart: document.getElementById("filterCreatedStartDate").value,
     createdEnd: document.getElementById("filterCreatedEndDate").value
   };
-  displayResults(filterRecordsClientSide(allRecordsCache, filters));
+  displayResults(sortRecordsNewestFirst(filterRecordsClientSide(allRecordsCache, filters)));
+};
+
+// 新しい検索条件で探し直す（検索ボタン・Enterキー・クリア）。1ページ目から表示する
+window.startNewSearch = function() {
+  currentListPage = 1;
+  search();
 };
 
 window.clearSearchFilters = function() {
@@ -143,13 +172,32 @@ window.clearSearchFilters = function() {
   ["filterTransactionStartDate", "filterTransactionEndDate", "filterCreatedStartDate", "filterCreatedEndDate"].forEach(id => {
     document.getElementById(id).value = "";
   });
-  search();
+  startNewSearch();
 };
 
 document.getElementById("searchValue")?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") search();
+  if (e.key === "Enter") startNewSearch();
 });
 
+// 一覧の上下にあるページ切り替え（＜ 1 / 5 ＞）を描画する。1ページしかない場合は何も表示しない
+function renderListPager(totalPages) {
+  const html = totalPages <= 1 ? "" : `
+    <button type="button" class="list-pager-btn" onclick="changeListPage(-1)" ${currentListPage <= 1 ? "disabled" : ""} aria-label="前のページ">＜</button>
+    <span class="list-pager-label">${currentListPage} / ${totalPages}</span>
+    <button type="button" class="list-pager-btn" onclick="changeListPage(1)" ${currentListPage >= totalPages ? "disabled" : ""} aria-label="次のページ">＞</button>
+  `;
+  document.querySelectorAll(".list-pager").forEach(el => { el.innerHTML = html; });
+}
+
+// ページを前後に切り替える（delta：-1で前へ、1で次へ）。切り替えたら一覧の先頭から見せる
+window.changeListPage = function(delta) {
+  currentListPage += delta;
+  search();
+  document.querySelector(".file-list-wrapper").scrollTop = 0;
+};
+
+// 並び替え済みのレコードのうち、現在のページ分（LIST_PAGE_SIZE件）だけを描画する。
+// チェックボックスも表示中のページの分だけなので、ZIPダウンロード・ゴミ箱移動は表示中のページ内が対象になる
 function displayResults(records) {
   const container = document.getElementById("results");
   const countDiv = document.getElementById("searchCount");
@@ -157,11 +205,23 @@ function displayResults(records) {
 
   if (!records || records.length === 0) {
     countDiv.innerHTML = "条件に一致するファイルは見つかりませんでした。";
+    currentListPage = 1;
+    renderListPager(0);
     return;
   }
-  countDiv.innerHTML = `<span style="color:var(--primary); font-size:18px;">${records.length}</span> 件のファイルを表示中`;
 
-  records.forEach(record => {
+  const totalPages = Math.ceil(records.length / LIST_PAGE_SIZE);
+  currentListPage = Math.min(Math.max(currentListPage, 1), totalPages); // 範囲外（削除でページが減った場合など）は直す
+  const startIndex = (currentListPage - 1) * LIST_PAGE_SIZE;
+  const pageRecords = records.slice(startIndex, startIndex + LIST_PAGE_SIZE);
+
+  const totalText = `<span style="color:var(--primary); font-size:18px;">${records.length}</span>`;
+  countDiv.innerHTML = totalPages <= 1
+    ? `${totalText} 件のファイルを表示中`
+    : `${totalText} 件中 ${startIndex + 1}〜${startIndex + pageRecords.length} 件を表示中`;
+  renderListPager(totalPages);
+
+  pageRecords.forEach(record => {
     const status = record["レコードステータス"] || "通常";
     const ocrStatus = record["OCRステータス"] || "";
     // 仮登録×OCR処理中の間は編集不可（設計書9-2）。一覧上はロック表示にしてクリックを無効化する
