@@ -5,10 +5,55 @@
  * 【役割】
  *   マスタ管理モーダルの表示、タグ・書類種別の追加・削除
  *   （削除と書類種別の追加は管理者のみ。サーバー側でも権限を必ず確認する）
+ *   追加・削除は通信に時間がかかるため、完了するまでの間「処理中」を表示して操作を止める（withMasterBusy）
  *
  * 【読み込み順】07_detail.js の後。
  * 【依存】02_state.js（キャッシュ・権限）、03_utils.js、04_api_auth.js
  */
+
+// =================================================================
+// 追加・削除中の「処理中」表示（タグ・書類種別で共通）
+// =================================================================
+let isMasterBusy = false; // 追加・削除の処理中か（二重実行を防ぐ）
+
+/** 処理中は、入力欄とボタンを押せなくする（「閉じる」ボタンと✕は、そのまま押せる） */
+function setMasterControlsDisabled(isDisabled) {
+  document.querySelectorAll("#tagModal input, #tagModal select, #tagModal .btn-primary, #tagModal .btn-danger-soft")
+    .forEach(el => { el.disabled = isDisabled; });
+}
+
+/**
+ * 追加・削除など、通信を伴う操作を実行する。完了するまで、押したボタンを「○○中...」（回転アイコン付き）に変え、
+ * マスタ管理の入力欄・ボタンを押せなくする。成功すれば完了のお知らせを出し、失敗すればエラーを表示する。
+ * @param {HTMLElement|null} button 押されたボタン（処理中の表示に使う。見つからない場合は null）
+ * @param {string} busyLabel ボタンに出す処理中の文字（例：「追加中...」）
+ * @param {string} doneMessage 完了時に出すお知らせ
+ * @param {function(): Promise<boolean|void>} task 実際の処理。キャンセルされて何もしなかった場合は false を返す（お知らせは出さない）
+ */
+async function withMasterBusy(button, busyLabel, doneMessage, task) {
+  if (isMasterBusy) return;
+  isMasterBusy = true;
+  const originalHtml = button ? button.innerHTML : "";
+  setMasterControlsDisabled(true);
+  if (button) {
+    button.classList.add("is-busy");
+    button.innerHTML = `<span class="material-symbols-outlined icon-spin">progress_activity</span> ${busyLabel}`;
+  }
+  try {
+    const result = await task();
+    if (result !== false) showToast(doneMessage);
+  } catch (err) {
+    showErrorDialog(err);
+  } finally {
+    isMasterBusy = false;
+    setMasterControlsDisabled(false);
+    // 一覧の再描画でボタン自体が作り直された場合（削除ボタン）は、元に戻す必要がない
+    if (button && button.isConnected) {
+      button.classList.remove("is-busy");
+      button.innerHTML = originalHtml;
+    }
+  }
+}
 
 // =================================================================
 // タグ管理（S08）
@@ -40,23 +85,22 @@ function renderTagList() {
 
 bindListAction("tagListArea", (d) => handleDeleteTag(d.id));
 
-window.handleAddTag = async function() {
+window.handleAddTag = async function(button) {
   const input = document.getElementById("newTagNameInput");
   const name = input.value.trim();
   if (!name) return;
-  try {
+  await withMasterBusy(button, "追加中...", "タグを追加しました。", async () => {
     await apiCall("addTag", { tagName: name });
-    input.value = "";
+    input.value = ""; // 追加に失敗した場合は、入力した内容を残す
     const tagData = await apiCall("loadTagMaster");
     allTagsCache = tagData.tags || [];
     renderTagList();
-  } catch (err) {
-    showErrorDialog(err);
-  }
+  });
 };
 
 window.handleDeleteTag = async function(tagId) {
-  try {
+  const button = document.querySelector(`#tagListArea [data-id="${CSS.escape(tagId)}"]`); // 押された削除ボタン
+  await withMasterBusy(button, "削除中...", "タグを削除しました。", async () => {
     const result = await apiCall("deleteTag", { tagId: tagId, force: false });
     if (!result.success) {
       // 使用中の場合は確認の上、強制削除（該当ファイルのタグ一覧からも自動で外れる）
@@ -69,16 +113,14 @@ window.handleDeleteTag = async function(tagId) {
         confirmButtonText: '削除する',
         cancelButtonText: 'キャンセル'
       });
-      if (!confirmResult.isConfirmed) return;
+      if (!confirmResult.isConfirmed) return false; // キャンセル（完了のお知らせは出さない）
       await apiCall("deleteTag", { tagId: tagId, force: true });
     }
     const tagData = await apiCall("loadTagMaster");
     allTagsCache = tagData.tags || [];
     renderTagList();
     await reloadAndRender(); // 削除したタグ・種別が外れた一覧を、画面にも反映する
-  } catch (err) {
-    showErrorDialog(err);
-  }
+  });
 };
 
 // =================================================================
@@ -113,7 +155,7 @@ function renderUseTypeList() {
 
 bindListAction("useTypeListArea", (d) => handleDeleteUseType(d.id));
 
-window.handleAddUseType = async function() {
+window.handleAddUseType = async function(button) {
   const idSelect = document.getElementById("newUseTypeIdSelect");
   const nameInput = document.getElementById("newUseTypeNameInput");
   const keywordInput = document.getElementById("newUseTypeKeywordsInput");
@@ -124,26 +166,25 @@ window.handleAddUseType = async function() {
     showToast("書類種別のIDを選択してください。");
     return;
   }
-  try {
+  await withMasterBusy(button, "追加中...", "書類種別を追加しました。", async () => {
     await apiCall("addUseType", {
       useTypeId: idSelect.value,
       useTypeName: name,
       keywords: keywordInput.value.trim(),
       ocrDateLabel: ocrDateLabelInput.value.trim()
     });
-    nameInput.value = "";
+    nameInput.value = ""; // 追加に失敗した場合は、入力した内容を残す
     keywordInput.value = "";
     ocrDateLabelInput.value = "";
     const data = await apiCall("loadUseTypeMaster");
     allUseTypesCache = data.useTypes || [];
     renderUseTypeList();
-  } catch (err) {
-    showErrorDialog(err);
-  }
+  });
 };
 
 window.handleDeleteUseType = async function(useTypeId) {
-  try {
+  const button = document.querySelector(`#useTypeListArea [data-id="${CSS.escape(useTypeId)}"]`); // 押された削除ボタン
+  await withMasterBusy(button, "削除中...", "書類種別を削除しました。", async () => {
     const result = await apiCall("deleteUseType", { useTypeId: useTypeId, force: false });
     if (!result.success) {
       const confirmResult = await Swal.fire({
@@ -155,14 +196,12 @@ window.handleDeleteUseType = async function(useTypeId) {
         confirmButtonText: '削除する',
         cancelButtonText: 'キャンセル'
       });
-      if (!confirmResult.isConfirmed) return;
+      if (!confirmResult.isConfirmed) return false; // キャンセル（完了のお知らせは出さない）
       await apiCall("deleteUseType", { useTypeId: useTypeId, force: true });
     }
     const data = await apiCall("loadUseTypeMaster");
     allUseTypesCache = data.useTypes || [];
     renderUseTypeList();
     await reloadAndRender(); // 削除したタグ・種別が外れた一覧を、画面にも反映する
-  } catch (err) {
-    showErrorDialog(err);
-  }
+  });
 };
