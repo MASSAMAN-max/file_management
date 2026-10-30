@@ -81,7 +81,7 @@
         <input type="text" id="searchValue" placeholder="文字を入力（Enterキーでも検索できます）" style="width:100%;">
       </div>
       <div style="display:flex; gap:6px;">
-        <button id="searchBtn" class="btn btn-primary" onclick="search()" style="padding:10px 16px; font-size:14px;">
+        <button id="searchBtn" class="btn btn-primary" onclick="startNewSearch()" style="padding:10px 16px; font-size:14px;">
           <span class="material-symbols-outlined" style="font-size:18px;">search</span> 検索
         </button>
         <button id="clearBtn" class="btn btn-secondary" onclick="clearSearchFilters()" style="padding:10px 16px; font-size:14px;">
@@ -170,6 +170,9 @@
     </div>
   </div>
 
+  <!-- ページ切り替え（＜ 1 / 5 ＞）。一覧の上下に同じものを出す。描画は 05_list.js の renderListPager -->
+  <div class="list-pager"></div>
+
   <!-- 一覧表示（ヘッダー行付き・横スクロール対応）。ヘッダーと行の列幅は同じgrid-template-columnsで揃える -->
   <div class="file-list-wrapper" style="margin: 0 12px;">
     <div class="file-list-grid file-list-header">
@@ -188,6 +191,8 @@
     </div>
     <div id="results"></div>
   </div>
+
+  <div class="list-pager"></div>
 </div>
 
 <!-- 新規アップロードモーダル（S03） -->
@@ -239,9 +244,9 @@
           </select>
         </div>
       </div>
+      <!-- タグ選択部品（タブ＋トグルボタン）が描画される。03_utils.js の renderTagCheckboxesInto -->
       <div class="form-group">
-        <label>タグ</label>
-        <div id="uploadTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+        <div id="uploadTagCheckboxes"></div>
       </div>
       <!-- 案件Noの紐付けはOCRで自動入力される項目ではないため、OCRのオン/オフに関わらず常に入力できる -->
       <div class="form-group">
@@ -298,7 +303,7 @@
             <label>説明・備考</label>
             <div class="voice-input-wrapper">
               <textarea id="uploadDescription" rows="2"></textarea>
-              <button type="button" class="btn btn-sm btn-primary" onclick="startVoiceInput(this)" title="音声で入力">
+              <button type="button" class="btn btn-sm btn-success" onclick="startVoiceInput(this)" title="音声で入力">
                 <span class="material-symbols-outlined">mic</span>
               </button>
             </div>
@@ -352,9 +357,9 @@
           </select>
         </div>
       </div>
+      <!-- タグ選択部品（タブ＋トグルボタン）が描画される。03_utils.js の renderTagCheckboxesInto -->
       <div class="form-group">
-        <label>タグ</label>
-        <div id="detailTagCheckboxes" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+        <div id="detailTagCheckboxes"></div>
       </div>
       <div class="form-group">
         <div id="detailProjectPicker"></div>
@@ -397,7 +402,7 @@
         <label>説明・備考</label>
         <div class="voice-input-wrapper">
           <textarea id="detailDescription" rows="3"></textarea>
-          <button type="button" class="btn btn-sm btn-primary" onclick="startVoiceInput(this)" title="音声で入力">
+          <button type="button" class="btn btn-sm btn-success" onclick="startVoiceInput(this)" title="音声で入力">
             <span class="material-symbols-outlined">mic</span>
           </button>
         </div>
@@ -426,7 +431,7 @@
       <h3 style="font-size:15px; color:#334155;">タグ</h3>
       <div style="display:flex; gap:8px; margin-bottom:12px;">
         <input type="text" id="newTagNameInput" placeholder="新規タグ名を入力">
-        <button class="btn btn-primary" onclick="handleAddTag()">追加</button>
+        <button class="btn btn-primary" onclick="handleAddTag(this)">追加</button>
       </div>
       <div id="tagListArea"></div>
 
@@ -442,7 +447,7 @@
         </div>
         <div style="display:flex; gap:8px; margin-bottom:12px;">
           <input type="text" id="newUseTypeOcrDateLabelInput" placeholder="OCR基準日名（例：見積日・任意。入力するとOCRで取引先・金額なども抽出）" style="flex:1;">
-          <button class="btn btn-primary" onclick="handleAddUseType()">追加</button>
+          <button class="btn btn-primary" onclick="handleAddUseType(this)">追加</button>
         </div>
       </div>
       <div id="useTypeListArea"></div>
