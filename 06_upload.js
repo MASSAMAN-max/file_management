@@ -7,6 +7,7 @@
  *   仮登録（1段目）→ Drive保存＋OCR（2段目）の送信処理
  *
  * 【複数ファイルのときの動き】
+ *   ・選んだファイル名を1件ずつ表示し、ゴミ箱アイコンで個別に外せる（2件以上選んでいる間だけ表示）
  *   ・書類種別・発行／受領・タグ・案件No・OCR の設定は、全ファイルに共通で適用する
  *   ・表示名・取引先・通貨・税率・金額などの詳細項目は入力できない（登録後に1件ずつ編集する）。
  *     通貨は円、税率は10%で登録される
@@ -34,6 +35,7 @@ window.openCreateModal = function() {
   renderTagCheckboxesInto("uploadTagCheckboxes", []);
   document.getElementById("uploadUseOcr").checked = true; // モーダルを開くたびOCRオンから開始する
   renderUploadFileSummary();
+  renderUploadFileList();
   applyUploadDetailLockState(); // OCRオン状態に合わせ、詳細項目を折りたたんでおく
 
   // 前回エラーで「登録中...」のまま残っていた場合に備え、送信ボタンを必ず初期状態に戻す
@@ -72,8 +74,41 @@ window.onUploadFilesChanged = function() {
     fileInput.value = ""; // 上限を超えたまま登録されないよう、選択を取り消す
   }
   renderUploadFileSummary();
+  renderUploadFileList();
   applyUploadDetailLockState();
 };
+
+/** 2件以上選んでいるときだけ、ファイル名を1件ずつ、外すためのゴミ箱ボタンつきで表示する */
+function renderUploadFileList() {
+  const files = getSelectedUploadFiles();
+  document.getElementById("uploadFileList").innerHTML = files.length < 2 ? "" : files.map((file, index) => `
+    <div class="upload-file-row">
+      <span class="upload-file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+      <button type="button" class="btn btn-danger-soft btn-sm" data-remove-index="${index}"
+        title="このファイルを外す" aria-label="${escapeHtml(file.name)}を外す">
+        <span class="material-symbols-outlined">delete</span>
+      </button>
+    </div>
+  `).join("");
+}
+
+/**
+ * 選択中のファイルから、指定した1件を外す。
+ * ファイル選択欄の files は直接書き換えられないため、外すファイル以外で作り直した一覧（DataTransfer）に差し替える。
+ * 差し替えただけでは change イベントが発生しないため、onUploadFilesChanged を呼んで表示と状態を更新する。
+ */
+function removeUploadFile(index) {
+  const dataTransfer = new DataTransfer();
+  getSelectedUploadFiles().forEach((file, i) => { if (i !== index) dataTransfer.items.add(file); });
+  document.getElementById("uploadFileInput").files = dataTransfer.files;
+  onUploadFilesChanged();
+}
+
+// ファイル名の一覧は描画のたびに作り直すため、ゴミ箱ボタンの操作は一覧の枠で1回だけ受け取る
+document.getElementById("uploadFileList").addEventListener("click", (e) => {
+  const removeButton = e.target.closest("[data-remove-index]");
+  if (removeButton) removeUploadFile(Number(removeButton.dataset.removeIndex));
+});
 
 /** 2件以上選んでいるときだけ、共通項目が全ファイルに適用されることを案内する */
 function renderUploadFileSummary() {
