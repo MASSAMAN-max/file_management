@@ -3,8 +3,11 @@
  * 案件選択部品（登録モーダル・詳細モーダルの「紐付け先」）と、案件マスタ・発注元マスタの裏読込。
  *
  * 【画面】「紐付け先」のタブ（初期状態は閉じている。押すと開閉する）
- *           ├ タブの外：選択済みの案件（常に表示。×で解除。確認ダイアログあり）
- *           └ タブの中：発注元 → 担当者（発注元を選ぶまで選べない）→ 自由文字検索 → 絞り込んだ案件の一覧（クリックで追加）
+ *           ├ タブの外：選択済みの案件（常に表示。×で解除。確認ダイアログあり）。案件が1件も無いときは「紐付け案件無し」
+ *           └ タブの中：「紐付け案件無し」（一番最初。選ぶと案件の紐付けを全て解除）
+ *                       → 発注元 → 担当者（発注元を選ぶまで選べない）→ 自由文字検索 → 絞り込んだ案件の一覧（クリックで追加）
+ *   「紐付け案件無し」は、案件が1件も選ばれていない状態のこと（案件を選ぶと外れ、全て解除すると選ばれる）。
+ *   この状態のときだけ、表示名を手入力できる（03_utils.js の applyDisplayNameLock）。
  * 【データ】案件マスタ・発注元マスタは、ログイン後に画面を表示してから裏で読み込む（loadProjectsInBackground）。
  *           読み込み中・失敗中は、部品の中にその状態を表示する。
  *           発注元・担当者の選択肢は、ログインマスターの「発注元」「発注元ヨミ」「担当者」から作る。
@@ -166,6 +169,7 @@ function createProjectPicker(containerId, selectedList, options) {
       </button>
       <div class="project-picker-selected" data-role="chips"></div>
       <div class="project-picker-body" data-role="body" style="display:none;">
+        <div data-role="nocase"></div>
         <div class="project-picker-row">
           <div class="project-picker-col">
             <label class="project-picker-label">発注元</label>
@@ -192,6 +196,7 @@ function createProjectPicker(containerId, selectedList, options) {
   const statusEl = container.querySelector('[data-role="status"]');
   const listEl = container.querySelector('[data-role="list"]');
   const chipsEl = container.querySelector('[data-role="chips"]');
+  const noCaseEl = container.querySelector('[data-role="nocase"]');
 
   function setOpen(open) {
     isOpen = open;
@@ -274,11 +279,32 @@ function createProjectPicker(containerId, selectedList, options) {
     listEl.scrollTop = scrollTop;
   }
 
-  /** 選択済みの案件を、「番号＋案件名」のチップで表示する（案件リストにない番号は番号のみ）。タブが閉じていても表示する */
+  /**
+   * 選択済みの案件を、「番号＋案件名」のチップで表示する（案件リストにない番号は番号のみ）。タブが閉じていても表示する。
+   * 案件が1件も無いときは、解除できない「紐付け案件無し」のチップを表示する。
+   */
   function renderChips() {
-    chipsEl.innerHTML = selectedList.map(caseNo => `
-      <span class="link-chip">${escapeHtml(getProjectChipLabel(caseNo))} <span class="remove" data-id="${escapeHtml(caseNo)}">×</span></span>
-    `).join("");
+    chipsEl.innerHTML = selectedList.length === 0
+      ? `<span class="link-chip is-none">紐付け案件無し</span>`
+      : selectedList.map(caseNo => `
+          <span class="link-chip">${escapeHtml(getProjectChipLabel(caseNo))} <span class="remove" data-id="${escapeHtml(caseNo)}">×</span></span>
+        `).join("");
+  }
+
+  /** タブの中の一番最初にある「紐付け案件無し」。案件を選んでいる間は押せて、押すと全ての紐付けを解除する */
+  function renderNoCase() {
+    const isSelected = selectedList.length === 0;
+    noCaseEl.innerHTML = `
+      <button type="button" class="project-picker-item" data-action="no-case" ${isSelected ? "disabled" : ""}>
+        <span class="project-picker-item-no">紐付け案件無し</span>
+        <span class="project-picker-item-sub">${isSelected ? "選択済み" : "全ての紐付けを解除"}</span>
+      </button>`;
+  }
+
+  /** 選択状態（案件のチップと「紐付け案件無し」）を描画し直す */
+  function renderSelection() {
+    renderChips();
+    renderNoCase();
   }
 
   /**
@@ -305,7 +331,7 @@ function createProjectPicker(containerId, selectedList, options) {
     renderClientOptions();
     renderContactOptions();
     renderList(false);
-    renderChips();
+    renderSelection();
   }
 
   function reset() {
@@ -348,7 +374,16 @@ function createProjectPicker(containerId, selectedList, options) {
       selectedList.push(caseNo);
       fillClientFromProject(projectMapByNo.get(caseNo));
     }
-    renderChips();
+    renderSelection();
+    renderList(true);
+    notifyChange();
+  });
+  noCaseEl.addEventListener("click", async (e) => {
+    const item = e.target.closest('[data-action="no-case"]');
+    if (!item || item.disabled) return;
+    if (!(await confirmRemoveProject(`選択中の案件（${selectedList.length}件）の紐付けを全て解除します`))) return;
+    selectedList.length = 0; // 呼び出し元と同じ配列を直接空にする
+    renderSelection();
     renderList(true);
     notifyChange();
   });
@@ -359,7 +394,7 @@ function createProjectPicker(containerId, selectedList, options) {
     if (!(await confirmRemoveProject(getProjectChipLabel(caseNo)))) return;
     const index = selectedList.indexOf(caseNo);
     if (index >= 0) selectedList.splice(index, 1);
-    renderChips();
+    renderSelection();
     renderList(true);
     notifyChange();
   });
