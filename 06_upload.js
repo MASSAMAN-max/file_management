@@ -29,7 +29,7 @@ window.openCreateModal = function() {
   setTaxInputValues("uploadTaxRate", "uploadAmountExcl", "uploadAmountIncl", "uploadCurrency", "", "", "", ""); // 通貨は円、税率は10%に戻す
   pendingLinks.length = 0; // 一覧の中身だけを空にする（案件選択部品が同じ配列を参照し続けるため）
   projectPickers.upload.reset(); // 絞り込みを初期状態に戻し、選択中の案件を描画し直す
-  releaseDisplayNameLock(document.getElementById("uploadDisplayName")); // 前回の読み取り専用を解き、紐付け案件無し（手入力できる）に戻す
+  applyDisplayNameLock(document.getElementById("uploadDisplayName"), false); // 開いた直後は紐付け案件無しなので、手入力できる状態に戻す
   renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
   renderTagCheckboxesInto("uploadTagCheckboxes", []);
   document.getElementById("uploadUseOcr").checked = true; // モーダルを開くたびOCRオンから開始する
@@ -46,7 +46,7 @@ window.openCreateModal = function() {
 
 // 案件の追加・解除のたびに、表示名を手入力できるか（紐付け案件無しのときだけ）を切り替える
 document.getElementById("uploadProjectPicker").addEventListener("change", () => {
-  applyDisplayNameLock(document.getElementById("uploadDisplayName"), pendingLinks.length > 0, "");
+  applyDisplayNameLock(document.getElementById("uploadDisplayName"), pendingLinks.length > 0);
 });
 
 window.closeCreateModal = function() {
