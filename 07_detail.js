@@ -20,8 +20,6 @@ window.openDetailModal = function(record) {
   document.getElementById("detailMode").value = isConfirmMode ? "confirm" : "update";
   document.getElementById("detailFileId").value = record["ファイルID"];
   document.getElementById("detailRowNumber").value = record["_rowNumber"];
-  detailOpenedRecord = record;
-  releaseDisplayNameLock(document.getElementById("detailDisplayName")); // 前回の記録の切り替え状態を捨ててから、値を入れる
   document.getElementById("detailDisplayName").value = record["表示名"] || "";
   document.getElementById("detailDescription").value = record["説明・備考"] || "";
   document.getElementById("detailClient").value = record["取引先"] || "";
@@ -45,7 +43,7 @@ window.openDetailModal = function(record) {
   detailLinks.length = 0;
   parseCaseNos(record["案件No"]).forEach(caseNo => detailLinks.push(caseNo));
   projectPickers.detail.reset(); // 絞り込みを初期状態に戻し、選択中の案件を描画し直す
-  refreshDetailDisplayNameLock(); // 案件に紐付いている記録は、表示名を読み取り専用にする
+  refreshDetailDisplayNameLock(); // 案件に紐付いている記録は、表示名を読み取り専用にして、案内文を出す
 
   // Driveプレビュー（画像・PDF・Office文書いずれもDriveの標準プレビューiframeで表示可能）
   const previewArea = document.getElementById("detailPreviewArea");
@@ -72,26 +70,13 @@ window.openDetailModal = function(record) {
 // =================================================================
 // 表示名の切り替え（案件に紐付けているときは、保存時に命名規則の名前が自動で入る）
 // =================================================================
-let detailOpenedRecord = null; // 詳細モーダルで開いているレコード（保存済みの値を、切り替えの判断に使う）
-
-/**
- * 案件の紐付けの有無に合わせて、表示名の入力欄を切り替える（03_utils.js の applyDisplayNameLock）。
- * 欄に命名後の名前を出せるのは、確定済みで、先頭の案件No・書類種別が保存時から変わっていないとき
- * （変わると、保存時に連番・日付・種別名が付け直されるため、保存前には分からない）。
- */
+/** 案件の紐付けの有無に合わせて、表示名の入力欄を切り替える（03_utils.js の applyDisplayNameLock） */
 function refreshDetailDisplayNameLock() {
-  const record = detailOpenedRecord;
-  const isLinked = detailLinks.length > 0;
-  const isUnchangedPlace = isLinked
-    && record["レコードステータス"] === "通常"
-    && detailLinks[0] === parseCaseNos(record["案件No"])[0]
-    && document.getElementById("detailUseTypeId").value === String(record["用途種別ID"] || "");
-  applyDisplayNameLock(document.getElementById("detailDisplayName"), isLinked, isUnchangedPlace ? record["表示名"] : "");
+  applyDisplayNameLock(document.getElementById("detailDisplayName"), detailLinks.length > 0);
 }
 
-// 案件の追加・解除、書類種別の変更のたびに切り替える（フォーム全体の変更検知より先に動くよう、それぞれの部品に登録する）
+// 案件の追加・解除のたびに切り替える（フォーム全体の変更検知より先に動くよう、案件選択部品に登録する）
 document.getElementById("detailProjectPicker").addEventListener("change", refreshDetailDisplayNameLock);
-document.getElementById("detailUseTypeId").addEventListener("change", refreshDetailDisplayNameLock);
 
 // =================================================================
 // 入力内容の取得と、変更の検知（確定済みファイルの更新用）
@@ -162,7 +147,6 @@ function getDetailChanges() {
   if (!detailInitialData) return [];
   const current = collectDetailFormData();
   return DETAIL_CHANGE_FIELDS
-    .filter(field => !(field.key === "displayName" && detailLinks.length > 0)) // 案件に紐付け中の表示名は、保存時に自動で決まるため比べない
     .filter(field => toComparableValue(current[field.key]) !== toComparableValue(detailInitialData[field.key]))
     .map(field => ({
       label: field.label,
