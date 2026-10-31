@@ -151,6 +151,7 @@ input[type="date"] { cursor: pointer; }
 .link-chip { display:inline-flex; align-items:center; gap:6px; background:#e0f2fe; color:#0369a1;
   padding:4px 10px; border-radius:14px; font-size:13px; margin:2px; }
 .link-chip .remove { cursor:pointer; font-weight:bold; }
+.link-chip.is-none { background:#f1f5f9; color:#64748b; } /* 「紐付け案件無し」（案件が1件も無い状態。×で解除するものではない） */
 
 /* トグルスイッチ（OCR実行有無など、オン/オフ選択の見た目を今風にするため） */
 .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
@@ -239,18 +240,24 @@ input[type="date"] { cursor: pointer; }
 }
 
 /* タグ選択部品（登録・詳細モーダルの「タグ」。03_utils.js の renderTagCheckboxesInto） */
-/* タブの見た目は、案件選択の「紐付け先」タブ（.project-picker-toggle）と共通 */
-.tag-picker.is-open .project-picker-toggle-icon { transform: rotate(180deg); }
-.tag-picker-selected { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; } /* 選択済みのタグ（タブが閉じていても表示） */
-.tag-picker-selected:empty { display: none; }
-.tag-selected-chip { background: var(--primary); color: white; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
-.tag-picker-body { display: none; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #cbd5e1; }
-.tag-picker.is-open .tag-picker-body { display: flex; }
-/* トグルボタン。実体は見えないチェックボックス（キーボード操作・フォームの変更検知をそのまま使うため、無効にはしない） */
-.tag-toggle { position: relative; display: inline-flex; margin: 0; font-weight: normal; }
-.tag-picker .tag-toggle input { position: absolute; opacity: 0; width: 0; height: 0; padding: 0; border: 0; }
-.tag-toggle-text { padding: 4px 14px; border: 2px solid #cbd5e1; border-radius: 16px; background: #f8fafc;
-  color: #475569; font-size: 13px; cursor: pointer; user-select: none; transition: all 0.15s; }
-.tag-toggle:hover .tag-toggle-text { border-color: var(--primary); }
-.tag-picker .tag-toggle input:checked + .tag-toggle-text { background: var(--primary); border-color: var(--primary); color: white; font-weight: bold; }
-.tag-picker .tag-toggle input:focus-visible + .tag-toggle-text { outline: 2px solid var(--primary-hover); outline-offset: 2px; }
+/* トグルスイッチ（.toggle-switch / .toggle-slider）は、OCRのオン／オフと共通 */
+.multi-select-wrapper { position: relative; }
+.multi-select-toggle { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 12px; background: white; border: 2px solid var(--border); border-radius: 8px;
+  font-family: inherit; font-size: 14px; color: #1e293b; text-align: left; cursor: pointer; }
+.multi-select-wrapper.is-open .multi-select-toggle { border-color: var(--primary); }
+.multi-select-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.multi-select-summary.is-placeholder { color: #94a3b8; } /* 未選択のときの「選択してください」 */
+.multi-select-icon { font-size: 18px; color: #94a3b8; flex-shrink: 0; transition: transform 0.2s; }
+.multi-select-wrapper.is-open .multi-select-icon { transform: rotate(180deg); }
+.multi-select-dropdown { display: none; position: absolute; z-index: 30; width: 100%; max-height: 260px; overflow-y: auto;
+  margin-top: 4px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.15); }
+.multi-select-wrapper.is-open .multi-select-dropdown { display: block; }
+.multi-select-header { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; /* 「選択」ボタンを常に見せる */
+  padding: 8px 10px; background: white; border-bottom: 1px solid #e2e8f0; }
+.toggle-row { display: flex; align-items: center; gap: 12px; margin: 0; padding: 10px 12px; font-weight: normal; cursor: pointer; }
+.toggle-row:hover { background: #f8fafc; }
+.toggle-row-label { font-size: 14px; color: #1e293b; }
+
+/* 表示名の入力欄が読み取り専用のとき（案件に紐付け中。保存時に命名規則の名前が自動で入る） */
+input.is-locked { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
