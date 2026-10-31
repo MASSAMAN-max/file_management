@@ -269,10 +269,9 @@
 
       <!-- OCRオン時は折りたたみ、OCRオフ時は開いて手入力できる詳細項目 -->
       <div id="uploadDetailSection" style="border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px; overflow:hidden;">
-        <div id="uploadDetailToggle" onclick="toggleUploadDetailSection()"
-             style="cursor:pointer; background:#f8fafc; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:bold; color:#475569;">
+        <div id="uploadDetailToggle" class="collapsible-toggle" onclick="toggleUploadDetailSection()">
           <span>詳細項目（取引先・通貨・金額など）</span>
-          <span id="uploadDetailToggleIcon" class="material-symbols-outlined" style="transition:transform 0.2s;">expand_more</span>
+          <span id="uploadDetailToggleIcon" class="material-symbols-outlined">expand_more</span>
         </div>
         <div id="uploadDetailBody" style="display:none; padding:16px; border-top:1px solid #e2e8f0;">
           <div class="form-group">
