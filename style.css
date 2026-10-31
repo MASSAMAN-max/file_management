@@ -13,6 +13,13 @@
   --text-sub: #555555;
   --border: #cccccc;
   --bg-light: #f4f6f9;
+  /* 入力部品（入力欄・セレクト・タグ・開閉タブ）の大きさの基準。ここを変えると、全部品がそろって変わる */
+  --control-font-size: 14px;
+  --control-padding-y: 8px;
+  --control-padding-x: 12px;
+  --control-border-width: 2px;
+  --control-radius: 8px;
+  --control-height: 40px; /* 1行の入力部品の高さ。横に並べたときに、高さがそろう */
 }
 
 body {
@@ -27,13 +34,16 @@ body {
 
 input, select, textarea {
   font-family: inherit;
-  font-size: 16px !important; /* iOS Safari は16px未満の入力欄を押すと画面が拡大されるため、文字は16pxのままにする */
-  padding: 8px 12px;          /* 入力欄を小さくするため、余白だけを減らしている（以前は12px） */
-  border: 2px solid var(--border);
-  border-radius: 8px;
+  /* iPhoneのSafariは、16px未満の入力欄を押すと画面が拡大される。見た目の統一（タグ・タブと同じ大きさ）を優先して、14pxにしている */
+  font-size: var(--control-font-size) !important;
+  padding: var(--control-padding-y) var(--control-padding-x);
+  border: var(--control-border-width) solid var(--border);
+  border-radius: var(--control-radius);
   box-sizing: border-box;
   background: white;
 }
+/* 1行の入力欄とセレクトは、高さをそろえる（トグルスイッチ内のチェックボックス・ファイル選択は対象外） */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select { min-height: var(--control-height); }
 input:focus, select:focus, textarea:focus { border-color: var(--primary); outline: none; background: #fdfdfd; }
 
 .btn {
@@ -201,7 +211,7 @@ input[type="date"] { cursor: pointer; }
 .project-picker-row { display:flex; gap:12px; margin-bottom:8px; }
 .project-picker-col { flex:1; min-width:0; }
 .project-picker-label { display:block; font-size:12px; font-weight:bold; color:var(--text-sub); margin-bottom:4px; }
-.project-picker select, .project-picker input[type="text"] { width:100%; padding:8px 10px; }
+.project-picker select, .project-picker input[type="text"] { width:100%; }
 .project-picker select:disabled { background:#f1f5f9; color:#94a3b8; cursor:not-allowed; }
 .project-picker-status { font-size:12px; color:var(--text-sub); margin:6px 0 4px; }
 .project-picker-status.is-error { color:#dc2626; }
@@ -214,10 +224,9 @@ input[type="date"] { cursor: pointer; }
 .project-picker-item:disabled { background:#f8fafc; color:#94a3b8; cursor:default; }
 .project-picker-item-no { font-weight:bold; flex-shrink:0; }
 .project-picker-item-sub { margin-left:auto; padding-left:8px; font-size:12px; color:#94a3b8; flex-shrink:0; }
-.project-picker-toggle { display:flex; justify-content:space-between; align-items:center; width:100%; padding:8px 14px;
-  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-family:inherit; font-size:13px; font-weight:bold; color:#475569; cursor:pointer; }
+.project-picker-toggle { display:flex; justify-content:space-between; align-items:center; width:100%; min-height:var(--control-height); box-sizing:border-box; padding:var(--control-padding-y) var(--control-padding-x); background:#f8fafc; border:var(--control-border-width) solid #e2e8f0; border-radius:var(--control-radius); font-family:inherit; font-size:var(--control-font-size); font-weight:bold; color:#475569; cursor:pointer; }
 .project-picker-toggle:hover { background:#f1f5f9; }
-.project-picker-toggle-icon { transition:transform 0.2s; }
+.project-picker-toggle-icon { font-size:18px; transition:transform 0.2s; }
 .project-picker-body { margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1; }
 .project-picker-selected { margin-top:8px; }
 .project-picker-selected:empty { display:none; }
@@ -242,9 +251,9 @@ input[type="date"] { cursor: pointer; }
 /* タグ選択部品（登録・詳細モーダルの「タグ」。03_utils.js の renderTagCheckboxesInto） */
 /* トグルスイッチ（.toggle-switch / .toggle-slider）は、OCRのオン／オフと共通 */
 .multi-select-wrapper { position: relative; }
-.multi-select-toggle { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%;
-  padding: 8px 12px; background: white; border: 2px solid var(--border); border-radius: 8px;
-  font-family: inherit; font-size: 14px; color: #1e293b; text-align: left; cursor: pointer; }
+.multi-select-toggle { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: var(--control-height); box-sizing: border-box;
+  padding: var(--control-padding-y) var(--control-padding-x); background: white; border: var(--control-border-width) solid var(--border); border-radius: var(--control-radius);
+  font-family: inherit; font-size: var(--control-font-size); color: #1e293b; text-align: left; cursor: pointer; }
 .multi-select-wrapper.is-open .multi-select-toggle { border-color: var(--primary); }
 .multi-select-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .multi-select-summary.is-placeholder { color: #94a3b8; } /* 未選択のときの「選択してください」 */
@@ -269,3 +278,8 @@ input.is-locked { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
 .upload-file-row { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px;
   background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
 .upload-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #334155; }
+
+/* 開閉するタブ（登録モーダルの「詳細項目」）。文字・横の余白・アイコンは、入力部品と同じ大きさ。縦の余白だけ12px */
+.collapsible-toggle { display: flex; justify-content: space-between; align-items: center; padding: 12px var(--control-padding-x);
+  background: #f8fafc; font-size: var(--control-font-size); font-weight: bold; color: #475569; cursor: pointer; }
+.collapsible-toggle .material-symbols-outlined { font-size: 18px; transition: transform 0.2s; }
