@@ -265,6 +265,7 @@
           <div class="form-group">
             <label>表示名（空欄の場合はファイル名を使用）</label>
             <input type="text" id="uploadDisplayName" placeholder="例：〇〇様邸_見積書">
+            <div id="uploadDisplayNameHint" class="display-name-lock-hint" hidden>案件に紐づけたため、保存時に自動で命名されます</div>
           </div>
           <div class="form-group">
             <label>取引先</label>
@@ -340,9 +341,14 @@
       <input type="hidden" id="detailFileId">
       <input type="hidden" id="detailRowNumber">
       <input type="hidden" id="detailMode"><!-- confirm（仮登録の確定） or update（確定済みの編集） -->
+      <!-- 紐付け先（案件）。OCR抽出結果のすぐ下に置く -->
+      <div class="form-group">
+        <div id="detailProjectPicker"></div>
+      </div>
       <div class="form-group">
         <label>表示名</label>
         <input type="text" id="detailDisplayName" required>
+        <div id="detailDisplayNameHint" class="display-name-lock-hint" hidden>案件に紐づけたため、保存時に自動で命名されます</div>
       </div>
       <div class="form-row">
         <div class="form-group" style="flex:2 1 200px;">
@@ -362,9 +368,6 @@
       <div class="form-group">
         <label>タグ</label>
         <div id="detailTagCheckboxes"></div>
-      </div>
-      <div class="form-group">
-        <div id="detailProjectPicker"></div>
       </div>
       <div class="form-group">
         <label>取引先</label>
@@ -496,7 +499,6 @@
     </div>
   </div>
 </div>
-
 
 <!--
   スクリプトは番号順に読み込む（後のファイルが、前のファイルで定義したものを使うため。順番を変えないこと）。
