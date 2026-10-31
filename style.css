@@ -262,3 +262,10 @@ input[type="date"] { cursor: pointer; }
 /* 表示名の入力欄が読み取り専用のとき（案件に紐付け中。保存時に命名規則の名前が自動で入る） */
 input.is-locked { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
 .display-name-lock-hint { margin-top: 4px; font-size: 12px; color: #64748b; } /* 入力欄の下の案内文 */
+
+/* 複数ファイルを選んだときの、ファイル名の一覧（1件ずつゴミ箱で外せる。06_upload.js の renderUploadFileList） */
+.upload-file-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.upload-file-list:empty { display: none; }
+.upload-file-row { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.upload-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #334155; }
