@@ -261,3 +261,4 @@ input[type="date"] { cursor: pointer; }
 
 /* 表示名の入力欄が読み取り専用のとき（案件に紐付け中。保存時に命名規則の名前が自動で入る） */
 input.is-locked { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
+.display-name-lock-hint { margin-top: 4px; font-size: 12px; color: #64748b; } /* 入力欄の下の案内文 */
