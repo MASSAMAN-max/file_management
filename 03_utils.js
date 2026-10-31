@@ -408,14 +408,17 @@ function renderUseTypeSelectInto(selectId, selectedValue, placeholderText) {
 }
 
 /**
- * タグ選択部品（登録モーダル・詳細モーダルで共通）。
- * 【画面】「タグ」のタブ（初期状態は閉じている。押すと開閉する）
- *           ├ タブの外：選択済みのタグ（常に表示）
- *           └ タブの中：タグごとのトグルボタン（押すごとに選択／解除。複数選択可）
- * 【仕組み】トグルボタンの実体は、見えないチェックボックス（<label>の中の <input type="checkbox">）。
+ * タグ選択部品（登録モーダル・詳細モーダルで共通）。別アプリの複数選択トグルUIと同じ作り。
+ * 【画面】「選択してください」のボタン（選択中は、選んだタグ名を「、」でつないで表示）
+ *           └ 押すとドロップダウンが開き、タグごとのトグルスイッチが並ぶ（複数選択可）。
+ *             右上の「選択」ボタン、または外側のクリックで閉じる。
+ * 【仕組み】トグルスイッチの実体はチェックボックス（<label>の中の <input type="checkbox">）。
  *   そのため、保存時の取得（getCheckedTagIdsIn）や、詳細モーダルの変更検知（フォームの change イベント）は、
  *   以前のチェックボックスのときと同じ仕組みでそのまま動く。
- * 【注意】タブの開閉と選択済み表示の更新は、この関数の下にあるイベント（document への1回だけの登録）が行う。
+ * 【別アプリとの違い】別アプリは、描画のたびに ID を付けて onclick で操作している。
+ *   こちらは描画のたびに中身を作り直すため、操作は document で1回だけ受け取る方式にした（下のイベント）。
+ *   また、タグはマスタ管理で追加するため、別アプリにある「新規追加」欄は付けていない。
+ * 【見た目】トグルスイッチは、OCRのオン／オフと同じ .toggle-switch / .toggle-slider を使う。
  */
 function renderTagCheckboxesInto(containerId, selectedTagIds) {
   const area = document.getElementById(containerId);
@@ -424,48 +427,67 @@ function renderTagCheckboxesInto(containerId, selectedTagIds) {
     return;
   }
   area.innerHTML = `
-    <div class="tag-picker">
-      <button type="button" class="project-picker-toggle tag-picker-toggle" aria-expanded="false">
-        <span>タグ（複数選択可）</span>
-        <span class="material-symbols-outlined project-picker-toggle-icon">expand_more</span>
+    <div class="multi-select-wrapper">
+      <button type="button" class="multi-select-toggle" aria-expanded="false">
+        <span class="multi-select-summary is-placeholder">選択してください</span>
+        <span class="material-symbols-outlined multi-select-icon">expand_more</span>
       </button>
-      <div class="tag-picker-selected"></div>
-      <div class="tag-picker-body">
+      <div class="multi-select-dropdown">
+        <div class="multi-select-header">
+          <button type="button" class="btn btn-sm btn-primary multi-select-close">選択</button>
+        </div>
         ${allTagsCache.map(tag => `
-          <label class="tag-toggle">
-            <input type="checkbox" value="${escapeHtml(tag.tagId)}" ${selectedTagIds.includes(tag.tagId) ? "checked" : ""}>
-            <span class="tag-toggle-text">${escapeHtml(tag.tagName)}</span>
+          <label class="toggle-row">
+            <span class="toggle-switch">
+              <input type="checkbox" value="${escapeHtml(tag.tagId)}" ${selectedTagIds.includes(tag.tagId) ? "checked" : ""}>
+              <span class="toggle-slider"></span>
+            </span>
+            <span class="toggle-row-label">${escapeHtml(tag.tagName)}</span>
           </label>
         `).join("")}
       </div>
     </div>
   `;
-  updateTagPickerSelected(area.querySelector(".tag-picker"));
+  updateMultiSelectSummary(area.querySelector(".multi-select-wrapper"));
 }
 
-/** タブの外に表示する「選択済みのタグ」を、現在のトグルの状態に合わせて作り直す */
-function updateTagPickerSelected(picker) {
-  const names = Array.from(picker.querySelectorAll(".tag-toggle input:checked"))
-    .map(input => input.nextElementSibling.textContent);
-  picker.querySelector(".tag-picker-selected").innerHTML =
-    names.map(name => `<span class="tag-selected-chip">${escapeHtml(name)}</span>`).join("");
+/** ボタンに表示する「選択中のタグ名」を、現在のトグルの状態に合わせて更新する。未選択なら「選択してください」 */
+function updateMultiSelectSummary(wrapper) {
+  const names = Array.from(wrapper.querySelectorAll(".toggle-row input:checked"))
+    .map(input => input.closest(".toggle-row").querySelector(".toggle-row-label").textContent);
+  const summary = wrapper.querySelector(".multi-select-summary");
+  summary.textContent = names.length > 0 ? names.join("、") : "選択してください";
+  summary.classList.toggle("is-placeholder", names.length === 0);
 }
 
-// タグ選択部品の操作。描画のたびに中身が作り直されるため、各ボタンではなく document で1回だけ受け取る
+/** ドロップダウンを開く／閉じる */
+function setMultiSelectOpen(wrapper, isOpen) {
+  wrapper.classList.toggle("is-open", isOpen);
+  wrapper.querySelector(".multi-select-toggle").setAttribute("aria-expanded", String(isOpen));
+}
+
+// タグ選択部品の操作（document で1回だけ登録。描画のたびに中身が作り直されるため、各ボタンには登録しない）
 document.addEventListener("click", (e) => {
-  const toggleButton = e.target.closest(".tag-picker-toggle");
-  if (!toggleButton) return;
-  const picker = toggleButton.closest(".tag-picker");
-  const willOpen = !picker.classList.contains("is-open");
-  picker.classList.toggle("is-open", willOpen);
-  toggleButton.setAttribute("aria-expanded", String(willOpen));
+  const clickedWrapper = e.target.closest(".multi-select-wrapper");
+  // 開いているドロップダウンのうち、今クリックした部品以外は閉じる（外側のクリック・別のドロップダウンを開いた場合）
+  document.querySelectorAll(".multi-select-wrapper.is-open").forEach(wrapper => {
+    if (wrapper !== clickedWrapper) setMultiSelectOpen(wrapper, false);
+  });
+  if (!clickedWrapper) return;
+
+  if (e.target.closest(".multi-select-toggle")) {
+    setMultiSelectOpen(clickedWrapper, !clickedWrapper.classList.contains("is-open"));
+  } else if (e.target.closest(".multi-select-close")) {
+    setMultiSelectOpen(clickedWrapper, false);
+  }
 });
 
 document.addEventListener("change", (e) => {
-  if (!e.target.matches(".tag-toggle input")) return;
-  updateTagPickerSelected(e.target.closest(".tag-picker"));
+  if (!e.target.matches(".multi-select-wrapper .toggle-row input")) return;
+  updateMultiSelectSummary(e.target.closest(".multi-select-wrapper"));
 });
 
+/** 選択中のタグIDの配列（トグルの実体はチェックボックスのため、チェック済みのものを集める） */
 function getCheckedTagIdsIn(containerId) {
   return Array.from(document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)).map(el => el.value);
 }
