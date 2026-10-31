@@ -211,7 +211,7 @@
       <div class="form-group">
         <label>ファイル（複数選択可・最大10件）</label>
         <input type="file" id="uploadFileInput" required multiple onchange="onUploadFilesChanged()">
-        <!-- 2件以上選んだときだけ、ファイル名を1件ずつ表示し、ゴミ箱アイコンで個別に外せる（06_upload.js の renderUploadFileList） -->
+        <!-- 選んでいるファイル名を1件ずつ表示し、ゴミ箱アイコンで個別に外せる（06_upload.js の renderUploadFileList） -->
         <div id="uploadFileList" class="upload-file-list"></div>
         <!-- 2件以上選んだときだけ、共通項目が全ファイルに適用される旨を表示する（06_upload.js） -->
         <div id="uploadFileSummary" style="display:none; font-size:12px; color:var(--text-sub); margin-top:4px;"></div>
@@ -229,13 +229,18 @@
         </div>
       </div>
 
-      <!-- OCRのオン/オフ・ファイル数に関わらず常に表示・操作できる項目（発行／受領は必須のためユーザーが必ず選ぶ）。
-           複数ファイルを選んだときは、ここの項目が全ファイルに共通で適用される。
+      <!-- OCRのオン/オフに関わらず常に表示・操作できる項目（発行／受領は必須のためユーザーが必ず選ぶ）。
+           複数ファイルを選んだときは、ここの項目（表示名を除く）が全ファイルに共通で適用される。
+           表示名は、複数ファイルのときだけ入力できない（1つの名前を全ファイルに付けられないため）。
            ※ 通貨・税率は下の詳細項目の中にある。OCRオン・複数ファイルのときは操作できず、円・税率10%で登録される -->
       <div class="form-row">
-        <div class="form-group" style="flex:2 1 200px;">
-          <label>書類種別</label>
-          <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
+        <div class="form-group" style="flex:2 1 260px;">
+          <label>表示名</label>
+          <input type="text" id="uploadDisplayName" placeholder="例：〇〇様邸_見積書（空欄ならOCR結果かファイル名）">
+          <!-- 案件に紐付けているときだけ表示（03_utils.js の applyDisplayNameLock） -->
+          <div id="uploadDisplayNameHint" class="display-name-lock-hint" hidden>案件に紐づけたため、保存時に自動で命名されます</div>
+          <!-- 複数ファイルを選んでいるときだけ表示（06_upload.js の refreshUploadDisplayNameState） -->
+          <div id="uploadDisplayNameMultiNote" class="display-name-lock-hint" hidden>複数ファイルの間は入力できません（OCR結果またはファイル名が表示名になります）</div>
         </div>
         <div class="form-group" style="flex:1 1 140px;">
           <label>発行／受領 <span class="badge-required">必須</span></label>
@@ -246,10 +251,16 @@
           </select>
         </div>
       </div>
-      <!-- タグ選択部品（ドロップダウン＋トグルスイッチ）が描画される。03_utils.js の renderTagCheckboxesInto -->
-      <div class="form-group">
-        <label>タグ</label>
-        <div id="uploadTagCheckboxes"></div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1 1 200px;">
+          <label>書類種別</label>
+          <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
+        </div>
+        <!-- タグ選択部品（ドロップダウン＋トグルスイッチ）が描画される。03_utils.js の renderTagCheckboxesInto -->
+        <div class="form-group" style="flex:1 1 200px;">
+          <label>タグ</label>
+          <div id="uploadTagCheckboxes"></div>
+        </div>
       </div>
       <!-- 案件Noの紐付けはOCRで自動入力される項目ではないため、OCRのオン/オフに関わらず常に入力できる -->
       <div class="form-group">
@@ -260,15 +271,10 @@
       <div id="uploadDetailSection" style="border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px; overflow:hidden;">
         <div id="uploadDetailToggle" onclick="toggleUploadDetailSection()"
              style="cursor:pointer; background:#f8fafc; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:bold; color:#475569;">
-          <span>詳細項目（表示名・取引先・通貨・金額など）</span>
+          <span>詳細項目（取引先・通貨・金額など）</span>
           <span id="uploadDetailToggleIcon" class="material-symbols-outlined" style="transition:transform 0.2s;">expand_more</span>
         </div>
         <div id="uploadDetailBody" style="display:none; padding:16px; border-top:1px solid #e2e8f0;">
-          <div class="form-group">
-            <label>表示名（空欄の場合はファイル名を使用）</label>
-            <input type="text" id="uploadDisplayName" placeholder="例：〇〇様邸_見積書">
-            <div id="uploadDisplayNameHint" class="display-name-lock-hint" hidden>案件に紐づけたため、保存時に自動で命名されます</div>
-          </div>
           <div class="form-group">
             <label>取引先</label>
             <input type="text" id="uploadClient" placeholder="例：〇〇株式会社">
