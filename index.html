@@ -211,6 +211,8 @@
       <div class="form-group">
         <label>ファイル（複数選択可・最大10件）</label>
         <input type="file" id="uploadFileInput" required multiple onchange="onUploadFilesChanged()">
+        <!-- 2件以上選んだときだけ、ファイル名を1件ずつ表示し、ゴミ箱アイコンで個別に外せる（06_upload.js の renderUploadFileList） -->
+        <div id="uploadFileList" class="upload-file-list"></div>
         <!-- 2件以上選んだときだけ、共通項目が全ファイルに適用される旨を表示する（06_upload.js） -->
         <div id="uploadFileSummary" style="display:none; font-size:12px; color:var(--text-sub); margin-top:4px;"></div>
       </div>
@@ -351,9 +353,9 @@
         <div id="detailDisplayNameHint" class="display-name-lock-hint" hidden>案件に紐づけたため、保存時に自動で命名されます</div>
       </div>
       <div class="form-row">
-        <div class="form-group" style="flex:2 1 200px;">
-          <label>書類種別</label>
-          <select id="detailUseTypeId"><option value="">未設定</option></select>
+        <div class="form-group" style="flex:1 1 140px;">
+          <label>取引日</label>
+          <input type="date" id="detailTransactionDate">
         </div>
         <div class="form-group" style="flex:1 1 140px;">
           <label>発行／受領 <span class="badge-required">必須</span></label>
@@ -364,24 +366,24 @@
           </select>
         </div>
       </div>
-      <!-- タグ選択部品（ドロップダウン＋トグルスイッチ）が描画される。03_utils.js の renderTagCheckboxesInto -->
-      <div class="form-group">
-        <label>タグ</label>
-        <div id="detailTagCheckboxes"></div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1 1 200px;">
+          <label>書類種別</label>
+          <select id="detailUseTypeId"><option value="">未設定</option></select>
+        </div>
+        <!-- タグ選択部品（ドロップダウン＋トグルスイッチ）が描画される。03_utils.js の renderTagCheckboxesInto -->
+        <div class="form-group" style="flex:1 1 200px;">
+          <label>タグ</label>
+          <div id="detailTagCheckboxes"></div>
+        </div>
       </div>
       <div class="form-group">
         <label>取引先</label>
         <input type="text" id="detailClient" placeholder="例：〇〇株式会社">
       </div>
-      <div class="form-row">
-        <div class="form-group" style="flex:2 1 220px;">
-          <label>適格事業者登録番号（Tから始まる13桁）</label>
-          <input type="text" id="detailInvoiceRegistrationNumber" placeholder="例：T1234567890123">
-        </div>
-        <div class="form-group" style="flex:1 1 140px;">
-          <label>取引日</label>
-          <input type="date" id="detailTransactionDate">
-        </div>
+      <div class="form-group">
+        <label>適格事業者登録番号（Tから始まる13桁）</label>
+        <input type="text" id="detailInvoiceRegistrationNumber" placeholder="例：T1234567890123">
       </div>
       <div class="form-row">
         <div class="form-group" style="flex:1 1 140px;">
@@ -499,6 +501,7 @@
     </div>
   </div>
 </div>
+
 
 <!--
   スクリプトは番号順に読み込む（後のファイルが、前のファイルで定義したものを使うため。順番を変えないこと）。
