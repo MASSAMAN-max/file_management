@@ -404,38 +404,21 @@ document.addEventListener("click", (e) => {
 
 // =================================================================
 // 表示名の入力欄の、案件の紐付けによる切り替え（登録モーダル・詳細モーダルで共通）
-//   ・案件に紐付けあり：読み取り専用。保存時に、サーバーが命名規則（種別ID-連番_種別名_案件名_日付_担当者.拡張子）で
-//                       決めたファイル名が表示名になる（連番・日付は保存の瞬間に決まるため、保存前には出せない）。
+//   ・案件に紐付けあり：読み取り専用にする。欄の下に「案件に紐づけたため、保存時に自動で命名されます」と小さく表示する。
+//                       保存時に、サーバーが命名規則（種別ID-連番_種別名_案件名_日付_担当者.拡張子）で決めた
+//                       ファイル名が表示名になる（連番・日付は保存の瞬間に決まるため、保存前には分からない）。
+//                       欄には、今の表示名をそのまま表示する（保存済みの命名後の名前など）。
 //   ・紐付け案件無し　：手入力できる。
-// 読み取り専用の入力欄は、入力チェック（required）の対象にならないため、空のままでも保存できる。
+// 案内文は、入力欄のidに「Hint」を付けたid（例：detailDisplayNameHint）の要素。紐付けがあるときだけ表示する。
 // =================================================================
-const DISPLAY_NAME_LOCKED_HINT = "案件に紐付けたため、保存時に自動で命名されます";
-
 /**
- * 表示名の入力欄を、紐付けの有無に合わせて切り替える。
  * @param {HTMLInputElement} inputEl 表示名の入力欄
  * @param {boolean} isLinked 案件に紐付けているか
- * @param {string} namedValue 紐付け中に欄へ出す名前（保存済みで、命名後の名前が分かっているときだけ。無ければ空→案内文を出す）
  */
-function applyDisplayNameLock(inputEl, isLinked, namedValue) {
-  if (inputEl.dataset.defaultPlaceholder === undefined) inputEl.dataset.defaultPlaceholder = inputEl.placeholder;
-  const wasLocked = inputEl.classList.contains("is-locked");
-
-  if (isLinked && !wasLocked) inputEl.dataset.manualValue = inputEl.value;        // 手入力していた内容を控える
-  if (!isLinked && wasLocked) inputEl.value = inputEl.dataset.manualValue || "";  // 紐付けを外したら、控えた内容に戻す
-
+function applyDisplayNameLock(inputEl, isLinked) {
   inputEl.readOnly = isLinked;
   inputEl.classList.toggle("is-locked", isLinked);
-  if (isLinked) inputEl.value = namedValue || "";
-  inputEl.placeholder = isLinked ? DISPLAY_NAME_LOCKED_HINT : inputEl.dataset.defaultPlaceholder;
-}
-
-/** モーダルを開き直すとき、前回の切り替え状態を捨てる（値を入れる前に呼ぶ） */
-function releaseDisplayNameLock(inputEl) {
-  inputEl.readOnly = false;
-  inputEl.classList.remove("is-locked");
-  delete inputEl.dataset.manualValue;
-  if (inputEl.dataset.defaultPlaceholder !== undefined) inputEl.placeholder = inputEl.dataset.defaultPlaceholder;
+  document.getElementById(inputEl.id + "Hint").hidden = !isLinked;
 }
 
 // =================================================================
