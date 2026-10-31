@@ -4,8 +4,8 @@
  *
  * 【画面】「紐付け先」のタブ（初期状態は閉じている。押すと開閉する）
  *           ├ タブの外：選択済みの案件（常に表示。×で解除。確認ダイアログあり）。案件が1件も無いときは「紐付け案件無し」
- *           └ タブの中：「紐付け案件無し」（一番最初。選ぶと案件の紐付けを全て解除）
- *                       → 発注元 → 担当者（発注元を選ぶまで選べない）→ 自由文字検索 → 絞り込んだ案件の一覧（クリックで追加）
+ *           └ タブの中：発注元 → 担当者（発注元を選ぶまで選べない）→ 自由文字検索 → 該当件数の表示
+ *                       → 「紐付け案件無し」（選ぶと案件の紐付けを全て解除）→ 絞り込んだ案件の一覧（クリックで追加）
  *   「紐付け案件無し」は、案件が1件も選ばれていない状態のこと（案件を選ぶと外れ、全て解除すると選ばれる）。
  *   この状態のときだけ、表示名を手入力できる（03_utils.js の applyDisplayNameLock）。
  * 【データ】案件マスタ・発注元マスタは、ログイン後に画面を表示してから裏で読み込む（loadProjectsInBackground）。
@@ -169,7 +169,6 @@ function createProjectPicker(containerId, selectedList, options) {
       </button>
       <div class="project-picker-selected" data-role="chips"></div>
       <div class="project-picker-body" data-role="body" style="display:none;">
-        <div data-role="nocase"></div>
         <div class="project-picker-row">
           <div class="project-picker-col">
             <label class="project-picker-label">発注元</label>
@@ -182,6 +181,7 @@ function createProjectPicker(containerId, selectedList, options) {
         </div>
         <input type="text" data-role="keyword" placeholder="案件No・案件名で絞り込み">
         <div class="project-picker-status" data-role="status"></div>
+        <div data-role="nocase"></div>
         <div class="project-picker-list" data-role="list"></div>
       </div>
     </div>
@@ -291,7 +291,7 @@ function createProjectPicker(containerId, selectedList, options) {
         `).join("");
   }
 
-  /** タブの中の一番最初にある「紐付け案件無し」。案件を選んでいる間は押せて、押すと全ての紐付けを解除する */
+  /** タブの中の、該当件数の表示の下にある「紐付け案件無し」。案件を選んでいる間は押せて、押すと全ての紐付けを解除する */
   function renderNoCase() {
     const isSelected = selectedList.length === 0;
     noCaseEl.innerHTML = `
