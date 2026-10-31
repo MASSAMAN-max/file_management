@@ -7,9 +7,9 @@
  *   仮登録（1段目）→ Drive保存＋OCR（2段目）の送信処理
  *
  * 【複数ファイルのときの動き】
- *   ・選んだファイル名を1件ずつ表示し、ゴミ箱アイコンで個別に外せる（2件以上選んでいる間だけ表示）
+ *   ・選んだファイル名を1件ずつ表示し、ゴミ箱アイコンで個別に外せる（1件だけのときも表示する）
  *   ・書類種別・発行／受領・タグ・案件No・OCR の設定は、全ファイルに共通で適用する
- *   ・表示名・取引先・通貨・税率・金額などの詳細項目は入力できない（登録後に1件ずつ編集する）。
+ *   ・表示名・取引先・通貨・税率・金額などは入力できない（登録後に1件ずつ編集する）。表示名は、OCR結果またはファイル名になる。
  *     通貨は円、税率は10%で登録される
  *   ・サーバーの負荷と実行時間を考え、1件ずつ順番に処理する（並列にはしない）
  *   ・途中で失敗したファイルがあっても、残りは続けて処理し、最後に失敗したファイルをまとめて知らせる
@@ -30,12 +30,12 @@ window.openCreateModal = function() {
   setTaxInputValues("uploadTaxRate", "uploadAmountExcl", "uploadAmountIncl", "uploadCurrency", "", "", "", ""); // 通貨は円、税率は10%に戻す
   pendingLinks.length = 0; // 一覧の中身だけを空にする（案件選択部品が同じ配列を参照し続けるため）
   projectPickers.upload.reset(); // 絞り込みを初期状態に戻し、選択中の案件を描画し直す
-  applyDisplayNameLock(document.getElementById("uploadDisplayName"), false); // 開いた直後は紐付け案件無しなので、手入力できる状態に戻す
   renderUseTypeSelectInto("uploadUseTypeId", "", "未設定（ファイル名から自動判定）");
   renderTagCheckboxesInto("uploadTagCheckboxes", []);
   document.getElementById("uploadUseOcr").checked = true; // モーダルを開くたびOCRオンから開始する
   renderUploadFileSummary();
   renderUploadFileList();
+  refreshUploadDisplayNameState(); // 開いた直後は、ファイル未選択・紐付け案件無しなので、手入力できる状態に戻す
   applyUploadDetailLockState(); // OCRオン状態に合わせ、詳細項目を折りたたんでおく
 
   // 前回エラーで「登録中...」のまま残っていた場合に備え、送信ボタンを必ず初期状態に戻す
@@ -47,9 +47,7 @@ window.openCreateModal = function() {
 };
 
 // 案件の追加・解除のたびに、表示名を手入力できるか（紐付け案件無しのときだけ）を切り替える
-document.getElementById("uploadProjectPicker").addEventListener("change", () => {
-  applyDisplayNameLock(document.getElementById("uploadDisplayName"), pendingLinks.length > 0);
-});
+document.getElementById("uploadProjectPicker").addEventListener("change", refreshUploadDisplayNameState);
 
 window.closeCreateModal = function() {
   document.getElementById("createModal").style.display = "none";
@@ -75,13 +73,28 @@ window.onUploadFilesChanged = function() {
   }
   renderUploadFileSummary();
   renderUploadFileList();
+  refreshUploadDisplayNameState();
   applyUploadDetailLockState();
 };
 
-/** 2件以上選んでいるときだけ、ファイル名を1件ずつ、外すためのゴミ箱ボタンつきで表示する */
+/**
+ * 表示名の入力欄の状態を、ファイル数と案件の紐付けに合わせて切り替える。
+ *   ・複数ファイル　：1つの表示名を全ファイルに付けられないため、入力できない（OCR結果またはファイル名が表示名になる）
+ *   ・案件に紐付け中：読み取り専用にして、案内文を出す（03_utils.js の applyDisplayNameLock）。
+ *                     命名規則の名前は、登録後の「確定保存」のときに自動で入る（詳細モーダルと同じ）
+ *   ・それ以外　　　：手入力できる（空欄ならOCR結果、OCRで取れなければファイル名）
+ */
+function refreshUploadDisplayNameState() {
+  const isMultiple = getSelectedUploadFiles().length > 1;
+  document.getElementById("uploadDisplayName").disabled = isMultiple;
+  document.getElementById("uploadDisplayNameMultiNote").hidden = !isMultiple;
+  applyDisplayNameLock(document.getElementById("uploadDisplayName"), pendingLinks.length > 0);
+}
+
+/** 選んでいるファイル名を1件ずつ、外すためのゴミ箱ボタンつきで表示する（0件なら何も出さない） */
 function renderUploadFileList() {
   const files = getSelectedUploadFiles();
-  document.getElementById("uploadFileList").innerHTML = files.length < 2 ? "" : files.map((file, index) => `
+  document.getElementById("uploadFileList").innerHTML = files.length === 0 ? "" : files.map((file, index) => `
     <div class="upload-file-row">
       <span class="upload-file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
       <button type="button" class="btn btn-danger-soft btn-sm" data-remove-index="${index}"
@@ -129,7 +142,7 @@ function renderUploadFileSummary() {
 //   ・OCRがオン：OCR結果での自動入力とユーザー手入力が競合しないようにするため
 //   ・複数ファイルを選択中：詳細項目はファイルごとに違い、全ファイル共通では入力できないため
 // どちらでもない場合（OCRオフ・ファイル1件以下）は開いた状態にし、手入力できるようにする。
-// ※ 書類種別・発行／受領・タグ・案件は詳細項目の外にあり、常に操作できる。
+// ※ 表示名・書類種別・発行／受領・タグ・案件は詳細項目の外にあり、常に操作できる（表示名は、複数ファイルのときだけ入力できない）。
 // ※ 通貨・税率は詳細項目の中にあるため、折りたたんでいる間は円・税率10%固定で登録される。
 // =================================================================
 window.applyUploadDetailLockState = function() {
