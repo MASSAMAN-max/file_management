@@ -52,12 +52,6 @@ window.openDetailModal = function(record) {
     ? `<iframe src="https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/preview" style="width:100%; height:min(320px, 38vh); border:1px solid #e2e8f0; border-radius:8px;" allow="autoplay"></iframe>`
     : '<div style="color:#94a3b8; font-size:13px;">プレビューを表示できません（Drive保存前のファイルです）</div>';
 
-  const ocrText = record["OCRテキスト（全文）"];
-  const ocrStatus = record["OCRステータス"];
-  document.getElementById("detailOcrPreview").textContent = ocrText
-    ? `【OCR抽出結果】\n${ocrText}`
-    : `【OCR抽出結果】未取得（OCRステータス: ${ocrStatus || "未実施"}）`;
-
   document.getElementById("detailModal").style.display = "flex";
   document.querySelector("#detailModal .modal-body").scrollTop = 0; // 一覧から開いたときは、常に一番上から表示する
 
