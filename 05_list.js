@@ -58,13 +58,13 @@ function normalizeText(t) {
 }
 
 /**
- * キーワード検索の対象テキスト（表示名・ファイル名・OCR全文を、正規化して連結したもの）。
- * 正規化（全角→半角など）はOCR全文が長いほど重いため、レコードごとに1回だけ作って使い回す。
- * （一覧を再取得するとレコード自体が新しくなるため、古い内容が残ることはない）
+ * キーワード検索の対象テキスト（表示名・ファイル名を、正規化して連結したもの）。
+ * OCR全文は保存しなくなったため、検索対象に含めない。
+ * 正規化（全角→半角など）はレコードごとに1回だけ行い、使い回す。
  */
 function getSearchText(record) {
   if (record.__searchText === undefined) {
-    record.__searchText = normalizeText(String(record["表示名"] || "") + String(record["ファイル名"] || "") + String(record["OCRテキスト（全文）"] || ""));
+    record.__searchText = normalizeText(String(record["表示名"] || "") + String(record["ファイル名"] || ""));
   }
   return record.__searchText;
 }
