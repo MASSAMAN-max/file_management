@@ -52,5 +52,7 @@ const DEFAULT_TIMEOUT_MS = 40000;
 
 const ACTION_TIMEOUT_MS = {
   processBackgroundTasks: 200000, // Drive保存＋OCR。GASの実行上限（6分）に収まる範囲で長めに待つ
+  uploadChunk: 120000,            // 大きなファイルの分割アップロード：1回分（4MiB）をDriveへ中継する。回線が遅い現場を考えて長めに待つ
+  finalizeResumableUpload: 200000, // 分割アップロード後のOCR（processBackgroundTasks と同じ）
   createZipDownload: 120000
 };
