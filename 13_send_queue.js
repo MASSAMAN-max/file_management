@@ -14,6 +14,13 @@
  *   （uploaded）… サーバーで保存できたファイルは、端末から外すため、状態としては残らない
  *   ※ 入力途中の下書き（draft）は 12_upload_draft.js が別に持つ。「登録する」を押した時点で、ここ（pending）へ移る。
  *
+ * 【ファイルの送り方（2段目）】ファイルの大きさで分ける。
+ *   ・4MiB以下 … 1回の通信で送る（processBackgroundTasks。Drive保存＋OCR）
+ *   ・4MiBより大きい … 分割して送る（16_分割アップロード.js）。4MiBずつDriveへ送り、通信が切れても、
+ *       サーバーが受け取り済みの位置を確認して、途中から続ける。送り終えたら finalizeResumableUpload でOCRを行う。
+ *       Driveへの接続（セッションURL）と、送り終えたファイルのIDは、端末に保存する（ページが終了しても、続きから再開できる）。
+ *       途中まで進んでいた場合は、通信エラーでも「再試行の回数」に数えない（進み続けている限り、あきらめない）。
+ *
  * 【二重登録の防止】ファイルごとに、端末で発行したUUID（clientKey）を持つ。
  *   ・1段目（仮登録）には、キー "app:<UUID>" を sourceKey として送る。サーバーは、同じキーの行が既にあれば、
  *     登録せずに既存の fileId・rowNumber を返す（通信が切れて応答だけ失われても、再送で二重登録にならない）。
@@ -41,6 +48,10 @@ const SendQueue = (function () {
   const STATUS_UPLOADING = "uploading";
   const STATUS_FAILED = "failed";
   const MAX_AUTO_ATTEMPTS = 3;     // 通信エラーでの自動再試行は、累計この回数まで
+  const CHUNK_SIZE = 16 * 256 * 1024;       // 分割アップロード：1回に送るサイズ（4MiB）。Driveの単位（256KiB）の倍数にすること
+  const SINGLE_POST_MAX_BYTES = CHUNK_SIZE; // これ以下のファイルは、分割せず1回で送る
+  const MAX_SESSION_RESTARTS = 2;  // 分割アップロード：Driveの接続が無効になったとき、最初からやり直す回数の上限（1回の送信あたり）
+  const MAX_RESYNC = 3;            // 分割アップロード：受け取り済みの位置が合わないとき、確認し直す回数の上限（1回の送信あたり）
   const SOURCE_KEY_PREFIX = "app:"; // Gmail取込のキー（"<メッセージID>#<番号>"）と区別する接頭辞
   const LOCK_NAME = "fs_send_queue";
 
@@ -48,6 +59,8 @@ const SendQueue = (function () {
   let entries = [];        // 端末に保存している、自分の送信待ち [{job, row}]（job：登録1回分の共通情報、row：ファイル1件）
   let isRunning = false;   // このページが送信中か
   let progress = null;     // 送信中の進み具合 {done, total}
+  let fileProgress = null; // 分割アップロード中のファイルの進み具合 {fileName, sent, total}（画面表示用。端末には保存しない）
+  let madeProgress = false; // いま送っているファイルが、今回の送信で、分割アップロードを1回分以上進められたか
   let isStarted = false;
   const listeners = [];
 
@@ -105,6 +118,7 @@ const SendQueue = (function () {
     return {
       isRunning: isRunning,
       progress: progress ? { done: progress.done, total: progress.total } : null,
+      fileProgress: fileProgress ? Object.assign({}, fileProgress) : null,
       isOnline: navigator.onLine !== false,
       items: entries.map(({ job, row }) => ({
         jobId: job.id,
@@ -164,6 +178,8 @@ const SendQueue = (function () {
         clientKey: newClientKey(),
         fileId: "",       // 1段目（仮登録）が済んだら入る
         rowNumber: 0,
+        uploadUri: "",    // 分割アップロードのDriveの接続（セッションURL）。大きなファイルで、送り始めたら入る
+        driveFileId: "",  // 分割アップロードが完了したら入る（OCRなどの確定処理が残っている状態）
         attempts: 0,
         lastError: "",
         updatedAt: now
@@ -201,6 +217,7 @@ const SendQueue = (function () {
     } finally {
       isRunning = false;
       progress = null;
+      fileProgress = null;
       await refresh();
     }
   }
@@ -247,6 +264,7 @@ const SendQueue = (function () {
     const row = entry.row;
     const patch = fields => DraftStore.patchFile(job.id, row.seq, Object.assign({ updatedAt: Date.now() }, fields));
 
+    madeProgress = false;
     await patch({ status: STATUS_UPLOADING });
     entries = await readEntries(); // 画面に「送信中」を出す
     notify();
@@ -277,13 +295,7 @@ const SendQueue = (function () {
       }
 
       // 【2段目】Drive保存＋OCR（重い処理）
-      const base64 = await fileToBase64(DraftStore.rowToFile(row));
-      const result = await apiCall("processBackgroundTasks", {
-        fData: {
-          fileId: fileId, rowNumber: rowNumber,
-          base64: base64, mimeType: row.type, fileName: row.name, useOcr: job.useOcr
-        }
-      });
+      const result = await sendFileBody(entry, fileId, rowNumber, patch);
       if (result && result.inProgress) summary.inProgress++;
 
       // サーバーで保存できたことを確認できたので、端末から外す
@@ -294,6 +306,112 @@ const SendQueue = (function () {
     } catch (err) {
       return handleFailure(entry, err, summary, patch);
     }
+  }
+
+  /** 2段目：ファイルの中身をDriveへ保存し、OCRを行う。大きさで、送り方を分ける */
+  async function sendFileBody(entry, fileId, rowNumber, patch) {
+    const job = entry.job;
+    const row = entry.row;
+    const file = DraftStore.rowToFile(row);
+
+    if (file.size <= SINGLE_POST_MAX_BYTES) {
+      return apiCall("processBackgroundTasks", {
+        fData: {
+          fileId: fileId, rowNumber: rowNumber,
+          base64: await fileToBase64(file), mimeType: row.type, fileName: row.name, useOcr: job.useOcr
+        }
+      });
+    }
+
+    const driveFileId = await uploadInChunks(row, file, fileId, rowNumber, patch);
+    return apiCall("finalizeResumableUpload", {
+      fData: {
+        fileId: fileId, rowNumber: rowNumber, driveFileId: driveFileId,
+        fileName: row.name, mimeType: row.type, useOcr: job.useOcr
+      }
+    });
+  }
+
+  /**
+   * 大きなファイルを、4MiBずつDriveへ送る。中断したときは、サーバーが受け取り済みの位置を確認して、そこから続ける。
+   * （通信エラーのときは、送った分が届いたか分からないため、端末の記録ではなく、必ずサーバーに確認する）
+   * @return {Promise<string>} DriveのファイルID（送り終えたもの）
+   */
+  async function uploadInChunks(row, file, fileId, rowNumber, patch) {
+    if (row.driveFileId) return row.driveFileId; // 送信は完了済み（OCRなどの確定処理だけが残っていた）
+
+    const total = file.size;
+    let uploadUri = row.uploadUri || "";
+    let needsStatusCheck = Boolean(uploadUri); // 前回の続きのときは、受け取り済みの位置を確認してから始める
+    let offset = 0;
+    let restarts = 0;
+    let resyncs = 0;
+    let driveFileId = "";
+    const showProgress = sent => { fileProgress = { fileName: row.name, sent: sent, total: total }; notify(); };
+    const communicationError = message => new Error(message); // isServerError を付けない＝通信エラーとして、次の機会に再試行される
+
+    try {
+      while (!driveFileId) {
+        // Driveの接続（セッション）が無ければ作る
+        if (!uploadUri) {
+          const started = await apiCall("startResumableUpload", {
+            fData: { fileId: fileId, rowNumber: rowNumber, fileName: row.name, mimeType: row.type, size: total }
+          });
+          uploadUri = started.uploadUri;
+          offset = 0;
+          needsStatusCheck = false;
+          await patch({ uploadUri: uploadUri }); // 端末に残す（ページが終了しても、続きから再開できる）
+        }
+
+        // 再開のとき：Driveが実際に受け取っている位置を確認する
+        if (needsStatusCheck) {
+          needsStatusCheck = false;
+          const status = await apiCall("getUploadStatus", { fData: { uploadUri: uploadUri, size: total } });
+          if (status.status === "complete") { driveFileId = status.driveFileId; break; }
+          if (status.status === "incomplete") { offset = status.receivedBytes; }
+          else if (status.status === "expired") {
+            if (++restarts > MAX_SESSION_RESTARTS) throw communicationError("Driveとの接続が切れました。しばらくしてからもう一度お試しください。");
+            uploadUri = ""; // 接続が無効になっていた。最初からやり直す
+            await patch({ uploadUri: "" });
+            continue;
+          } else {
+            throw communicationError("Driveの状態を確認できませんでした。");
+          }
+        }
+
+        // 1回分を送る
+        showProgress(offset);
+        const end = Math.min(offset + CHUNK_SIZE, total);
+        const result = await apiCall("uploadChunk", {
+          fData: { uploadUri: uploadUri, offset: offset, size: total, base64: await fileToBase64(file.slice(offset, end)) }
+        });
+
+        if (result.status === "complete") {
+          driveFileId = result.driveFileId;
+          madeProgress = true;
+        } else if (result.status === "incomplete") {
+          if (result.receivedBytes <= offset) throw communicationError("アップロードが進みませんでした。");
+          offset = result.receivedBytes;
+          madeProgress = true;
+        } else if (result.status === "resync") {
+          if (++resyncs > MAX_RESYNC) throw communicationError("アップロードの位置を合わせられませんでした。");
+          needsStatusCheck = true; // 位置がずれた。Driveに聞き直してから続ける
+        } else if (result.status === "expired") {
+          if (++restarts > MAX_SESSION_RESTARTS) throw communicationError("Driveとの接続が切れました。しばらくしてからもう一度お試しください。");
+          uploadUri = "";
+          await patch({ uploadUri: "" });
+        } else {
+          throw communicationError(`Driveが一時的に応答しません。（HTTP ${result.httpCode || "不明"}）`);
+        }
+      }
+    } finally {
+      fileProgress = null;
+    }
+
+    showProgress(total);
+    fileProgress = null;
+    await patch({ driveFileId: driveFileId }); // 送り終えたことを端末に残す（このあとの確定処理だけを、やり直せるようにする）
+    return driveFileId;
   }
 
   function makeServerError(message) {
@@ -323,8 +441,10 @@ const SendQueue = (function () {
     }
 
     // 通信エラー（タイムアウト・HTTPエラーなど）：回数に達するまで、次の機会に自動で再試行する
-    const isFinal = attempts >= MAX_AUTO_ATTEMPTS;
-    await patch({ status: isFinal ? STATUS_FAILED : STATUS_PENDING, attempts: attempts, lastError: message });
+    // 分割アップロードが1回分以上進んでいたときは、回数に数えない（進み続けている限り、次の機会に続きから送る）
+    const countedAttempts = madeProgress ? 0 : attempts;
+    const isFinal = countedAttempts >= MAX_AUTO_ATTEMPTS;
+    await patch({ status: isFinal ? STATUS_FAILED : STATUS_PENDING, attempts: countedAttempts, lastError: message });
     if (isFinal) summary.failures.push({ fileName: row.name, message: message });
     return "stop";
   }
