@@ -14,8 +14,13 @@
  *   ・サーバーの負荷と実行時間を考え、1件ずつ順番に処理する（並列にはしない）
  *   ・途中で失敗したファイルがあっても、残りは続けて処理し、最後に失敗したファイルをまとめて知らせる
  *
+ * 【入力内容の自動保存】
+ *   入力中の内容と選んだファイルは、12_upload_draft.js（UploadDraft）が端末内へ自動保存する。
+ *   このファイルでは、保存のきっかけ（モーダルを開く・閉じる、ファイルを選び直す、登録を始める・終える）だけを呼び出す。
+ *
  * 【読み込み順】05_list.js の後。
- * 【依存】02_state.js（pendingLinks）、03_utils.js（案件No入力・セレクト）、04_api_auth.js（apiCall・一覧の再取得）
+ * 【依存】02_state.js（pendingLinks）、03_utils.js（案件No入力・セレクト）、04_api_auth.js（apiCall・一覧の再取得）、
+ *         12_upload_draft.js（UploadDraft。実行時に呼ぶだけなので、読み込み順は問わない）
  */
 
 // 一度に登録できるファイル数の上限（1件ごとにbase64を送るため、GASの実行時間を考えた値）
@@ -44,12 +49,14 @@ window.openCreateModal = function() {
   submitBtn.textContent = "登録する";
 
   document.getElementById("createModal").style.display = "flex";
+  UploadDraft.onModalOpened(); // 前回の入力内容が端末に残っていれば、続きから再開できる案内を出す
 };
 
 // 案件の追加・解除のたびに、表示名を手入力できるか（紐付け案件無しのときだけ）を切り替える
 document.getElementById("uploadProjectPicker").addEventListener("change", refreshUploadDisplayNameState);
 
 window.closeCreateModal = function() {
+  UploadDraft.flushSave(); // 閉じる直前の入力内容を、待たずに保存する（再度開くと続きから再開できる）
   document.getElementById("createModal").style.display = "none";
 };
 
@@ -75,6 +82,7 @@ window.onUploadFilesChanged = function() {
   renderUploadFileList();
   refreshUploadDisplayNameState();
   applyUploadDetailLockState();
+  UploadDraft.onFilesChanged(); // 選んだファイルを、端末内へ保存し直す
 };
 
 /**
@@ -252,6 +260,7 @@ async function handleCreateSubmit(event) {
   const submitBtn = document.getElementById("createSubmitBtn");
   submitBtn.disabled = true;
   submitBtn.textContent = "登録中...";
+  UploadDraft.pauseForSubmit(); // 登録中は、入力途中の下書きとしての自動保存を止める（最新の入力内容は、止める前に保存される）
 
   const isMultiple = files.length > 1;
   const useOcr = document.getElementById("uploadUseOcr").checked;
@@ -260,6 +269,9 @@ async function handleCreateSubmit(event) {
   const caseNos = pendingLinks.slice();
 
   showToast(isMultiple ? `仮登録中...（${files.length}件）` : "仮登録中...");
+
+  // 端末に保存しているデータ。1件以上の仮登録ができたあとに作り、2段目に成功したファイルから順に端末から外していく
+  let batch = null;
 
   try {
     // 【1段目】シートへ仮登録（軽量。base64はまだ送らない）。1件ずつ順番に行い、失敗したファイルは記録して続ける
@@ -272,12 +284,13 @@ async function handleCreateSubmit(event) {
         });
         registered.push({ file: file, createResult: createResult });
       } catch (err) {
-        failures.push({ fileName: file.name, message: err.message });
+        failures.push({ fileName: file.name, message: err.message, file: file });
       }
     }
 
     // 1件も仮登録できなかった場合は、モーダルを開いたままにして、直して再度押せるようにする
     if (registered.length === 0) {
+      UploadDraft.resumeAfterSubmitFailure(); // 入力内容は残したまま、自動保存を再開する
       await reloadAndRender(); // 通信エラーなどで、実際には登録されていた場合に備えて一覧を最新にしておく
       showUploadFailures(failures, isMultiple, "登録エラー");
       submitBtn.disabled = false;
@@ -285,6 +298,8 @@ async function handleCreateSubmit(event) {
       return;
     }
 
+    // 入力内容とファイルを、「登録処理中のデータ」として端末に保持する（ここから先でページが終了しても、ファイルは失われない）
+    batch = UploadDraft.startBatch(files);
     closeCreateModal();
     // 1段階目完了のトーストは、2段階目（Drive保存＋OCR）が終わるまで自動で消さず表示し続ける
     showToast("仮登録が完了しました。バックグラウンド処理中...", true);
@@ -305,10 +320,14 @@ async function handleCreateSubmit(event) {
           }
         });
         if (bgResult.inProgress) inProgressCount++;
+        batch.fileSucceeded(files.indexOf(file)); // サーバー側の処理が済んだので、このファイルは端末から外す
       } catch (err) {
-        failures.push({ fileName: file.name, message: err.message });
+        failures.push({ fileName: file.name, message: err.message, file: file });
       }
     }
+
+    // 失敗したファイルだけが端末に残る（全件成功なら、端末のデータはすべて消える）。残ったものは、次に登録画面を開いたときに案内される
+    batch.finish();
 
     // 全件が終わったら、表示し続けていたトーストを閉じてから、OCR反映後の最新データを一覧に反映する
     Swal.close();
@@ -328,6 +347,7 @@ async function handleCreateSubmit(event) {
 
   } catch (err) {
     Swal.close(); // 表示し続けているトーストが残らないよう、エラー時も必ず閉じる
+    if (batch) batch.finish(); else UploadDraft.resumeAfterSubmitFailure(); // 端末のデータを整理する／入力画面に戻るなら自動保存を再開する
     // 想定外のエラー時も一覧を最新状態に合わせておく（途中まで登録されている可能性があるため）
     await reloadAndRender();
     showErrorDialog(err, '登録エラー');
