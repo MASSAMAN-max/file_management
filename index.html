@@ -207,6 +207,14 @@
       </h2>
     </div>
     <div class="modal-body">
+<!-- 前回の入力内容が端末に残っているときだけ表示する（12_upload_draft.js）。続きから再開するか、破棄するかを選ぶ -->
+<div id="uploadDraftBanner" class="draft-banner" hidden>
+  <div id="uploadDraftBannerMessage" class="draft-banner-message"></div>
+  <div class="draft-banner-actions">
+    <button type="button" id="uploadDraftDiscardBtn" class="btn btn-danger-soft btn-sm">破棄する</button>
+    <button type="button" id="uploadDraftRestoreBtn" class="btn btn-success btn-sm">続きから再開</button>
+  </div>
+</div>
 <form id="createForm" onsubmit="handleCreateSubmit(event)">
       <div class="form-group">
         <label>ファイル（複数選択可・最大10件）</label>
@@ -516,6 +524,9 @@
     07_detail.js    … 詳細・編集
     08_master.js    … マスタ管理
     09_trash.js     … ゴミ箱・削除済み
+    10_project_picker.js … 案件選択部品
+    11_draft_store.js    … 入力途中データの保存庫（IndexedDB）
+    12_upload_draft.js   … 新規登録の入力内容の自動保存・復元
   ※ GASのURLなど環境ごとの設定は config.js（<head>で読み込み）にある。
 -->
 <script src="01_config.js"></script>
@@ -528,5 +539,7 @@
 <script src="08_master.js"></script>
 <script src="09_trash.js"></script>
 <script src="10_project_picker.js"></script>
+<script src="11_draft_store.js"></script>
+<script src="12_upload_draft.js"></script>
 </body>
 </html>
