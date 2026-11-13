@@ -4,7 +4,8 @@
  * =====================================================================
  * 【役割】
  *   登録モーダルの開閉・入力、OCR・ファイル数による詳細項目の折りたたみ、
- *   仮登録（1段目）→ Drive保存＋OCR（2段目）の送信処理
+ *   「登録する」で、入力内容とファイルを端末に保存し、送信キュー（13_send_queue.js）へ渡す。
+ *   送信（仮登録の1段目 → Drive保存＋OCRの2段目）は、送信キューが行う。
  *
  * 【複数ファイルのときの動き】
  *   ・選んだファイル名を1件ずつ表示し、ゴミ箱アイコンで個別に外せる（1件だけのときも表示する）
@@ -12,7 +13,8 @@
  *   ・表示名・取引先・通貨・税率・金額などは入力できない（登録後に1件ずつ編集する）。表示名は、OCR結果またはファイル名になる。
  *     通貨は円、税率は10%で登録される
  *   ・サーバーの負荷と実行時間を考え、1件ずつ順番に処理する（並列にはしない）
- *   ・途中で失敗したファイルがあっても、残りは続けて処理し、最後に失敗したファイルをまとめて知らせる
+ *   ・サーバーがエラーを返したファイルがあっても、残りは続けて処理し、最後に失敗したファイルをまとめて知らせる。
+ *     通信エラーのときは、その回の送信を止め、次の機会（通信の回復・起動・前面復帰・「今すぐ送信」）に続きから送る
  *
  * 【入力内容の自動保存】
  *   入力中の内容と選んだファイルは、12_upload_draft.js（UploadDraft）が端末内へ自動保存する。
@@ -20,7 +22,8 @@
  *
  * 【読み込み順】05_list.js の後。
  * 【依存】02_state.js（pendingLinks）、03_utils.js（案件No入力・セレクト）、04_api_auth.js（apiCall・一覧の再取得）、
- *         12_upload_draft.js（UploadDraft。実行時に呼ぶだけなので、読み込み順は問わない）
+ *         12_upload_draft.js（UploadDraft）、13_send_queue.js（SendQueue）（どちらも実行時に呼ぶだけなので、読み込み順は問わない）
+ *   ※ このファイルの fileToBase64・showUploadFailures は、13_send_queue.js からも呼ばれる。
  */
 
 // 一度に登録できるファイル数の上限（1件ごとにbase64を送るため、GASの実行時間を考えた値）
@@ -254,12 +257,10 @@ async function handleCreateSubmit(event) {
     return;
   }
 
-  // 二重送信防止：押した瞬間にボタンを無効化する。
-  // モーダルが閉じるのは1段目（仮登録）のAPI応答が返ってきた後のため、
-  // その間の連打による重複登録を防ぐのが目的。
+  // 二重送信防止：押した瞬間にボタンを無効化する（端末への保存が終わるまでの連打を防ぐ）
   const submitBtn = document.getElementById("createSubmitBtn");
   submitBtn.disabled = true;
-  submitBtn.textContent = "登録中...";
+  submitBtn.textContent = "保存中...";
   UploadDraft.pauseForSubmit(); // 登録中は、入力途中の下書きとしての自動保存を止める（最新の入力内容は、止める前に保存される）
 
   const isMultiple = files.length > 1;
@@ -268,91 +269,27 @@ async function handleCreateSubmit(event) {
   const displayName = isMultiple ? "" : document.getElementById("uploadDisplayName").value.trim(); // 空ならファイル名が表示名になる
   const caseNos = pendingLinks.slice();
 
-  showToast(isMultiple ? `仮登録中...（${files.length}件）` : "仮登録中...");
-
-  // 端末に保存しているデータ。1件以上の仮登録ができたあとに作り、2段目に成功したファイルから順に端末から外していく
-  let batch = null;
-
+  // 【端末に保存】ファイルと入力内容を、送信キューとして端末に保存する。
+  // ここまで成功すれば、通信が切れていても、ページが終了しても、ファイルは失われない。
+  // 保存に失敗したとき（端末の空き容量不足など）は、入力内容を残したままエラーを知らせる。
   try {
-    // 【1段目】シートへ仮登録（軽量。base64はまだ送らない）。1件ずつ順番に行い、失敗したファイルは記録して続ける
-    const registered = []; // 仮登録できたファイル {file, createResult}
-    const failures = [];   // 失敗したファイル {fileName, message}
-    for (const file of files) {
-      try {
-        const createResult = await apiCall("createRecordSheetOnly", {
-          fData: Object.assign({ fileName: file.name, mimeType: file.type, displayName: displayName, caseNos: caseNos }, entryFields)
-        });
-        registered.push({ file: file, createResult: createResult });
-      } catch (err) {
-        failures.push({ fileName: file.name, message: err.message, file: file });
-      }
-    }
-
-    // 1件も仮登録できなかった場合は、モーダルを開いたままにして、直して再度押せるようにする
-    if (registered.length === 0) {
-      UploadDraft.resumeAfterSubmitFailure(); // 入力内容は残したまま、自動保存を再開する
-      await reloadAndRender(); // 通信エラーなどで、実際には登録されていた場合に備えて一覧を最新にしておく
-      showUploadFailures(failures, isMultiple, "登録エラー");
-      submitBtn.disabled = false;
-      submitBtn.textContent = "登録する";
-      return;
-    }
-
-    // 入力内容とファイルを、「登録処理中のデータ」として端末に保持する（ここから先でページが終了しても、ファイルは失われない）
-    batch = UploadDraft.startBatch(files);
-    closeCreateModal();
-    // 1段階目完了のトーストは、2段階目（Drive保存＋OCR）が終わるまで自動で消さず表示し続ける
-    showToast("仮登録が完了しました。バックグラウンド処理中...", true);
-    await reloadAndRender();
-
-    // 【2段目】Drive保存＋OCR（重い処理）。1件ずつ順番に行い、完了を待つ
-    let inProgressCount = 0; // 「別の処理が同じファイルを実行中」とサーバーが判断した件数
-    for (let i = 0; i < registered.length; i++) {
-      const file = registered[i].file;
-      const createResult = registered[i].createResult;
-      if (isMultiple) showToast(`処理中... ${i + 1}/${registered.length}件（画面を閉じないでください）`, true);
-      try {
-        const base64 = await fileToBase64(file);
-        const bgResult = await apiCall("processBackgroundTasks", {
-          fData: {
-            fileId: createResult.fileId, rowNumber: createResult.rowNumber,
-            base64: base64, mimeType: file.type, fileName: file.name, useOcr: useOcr
-          }
-        });
-        if (bgResult.inProgress) inProgressCount++;
-        batch.fileSucceeded(files.indexOf(file)); // サーバー側の処理が済んだので、このファイルは端末から外す
-      } catch (err) {
-        failures.push({ fileName: file.name, message: err.message, file: file });
-      }
-    }
-
-    // 失敗したファイルだけが端末に残る（全件成功なら、端末のデータはすべて消える）。残ったものは、次に登録画面を開いたときに案内される
-    batch.finish();
-
-    // 全件が終わったら、表示し続けていたトーストを閉じてから、OCR反映後の最新データを一覧に反映する
-    Swal.close();
-    await reloadAndRender();
-
-    // 結果の通知。失敗があればファイル名つきで知らせ、なければ完了を知らせる
-    if (failures.length > 0) {
-      const title = registered.length > 0 && failures.length < files.length ? "一部のファイルでエラーが発生しました" : "登録エラー";
-      showUploadFailures(failures, isMultiple, title);
-    } else if (inProgressCount > 0) {
-      showToast(isMultiple
-        ? `処理が完了しました。（${inProgressCount}件は別の処理が実行中です。完了後に一覧を更新してください）`
-        : "このファイルは別の処理が実行中です。完了後に一覧を更新してください。");
-    } else {
-      showToast(isMultiple ? `${files.length}件の処理が完了しました。` : "処理が完了しました。");
-    }
-
+    await SendQueue.enqueue({ files: files, entryFields: entryFields, displayName: displayName, caseNos: caseNos, useOcr: useOcr });
   } catch (err) {
-    Swal.close(); // 表示し続けているトーストが残らないよう、エラー時も必ず閉じる
-    if (batch) batch.finish(); else UploadDraft.resumeAfterSubmitFailure(); // 端末のデータを整理する／入力画面に戻るなら自動保存を再開する
-    // 想定外のエラー時も一覧を最新状態に合わせておく（途中まで登録されている可能性があるため）
-    await reloadAndRender();
-    showErrorDialog(err, '登録エラー');
-    // モーダルが開いたままの場合に、ボタンを再度押せるように戻す
+    console.error("端末への保存に失敗しました:", err);
+    UploadDraft.resumeAfterSubmitFailure();
+    showErrorDialog(new Error("端末にファイルを保存できませんでした。端末の空き容量を確認してから、もう一度お試しください。（入力内容は残っています）"), "登録エラー");
     submitBtn.disabled = false;
     submitBtn.textContent = "登録する";
+    return;
   }
+
+  await UploadDraft.discardCurrent(); // 送信キューへ移したので、入力途中の下書きは不要
+  closeCreateModal();
+  showToast(navigator.onLine === false
+    ? "オフラインのため端末に保存しました。通信が回復したら自動で送信します。"
+    : "登録を受け付けました。送信を始めます。進み具合は一覧の上部に表示されます。");
+
+  // 【送信】仮登録（1段目）→ Drive保存＋OCR（2段目）。1件ずつ順番に行う（13_send_queue.js）。
+  // 通信できないときは何もしない（回復したら自動で送信される）。結果は、送信が終わったときに知らせる
+  SendQueue.kick({ announce: true });
 }
