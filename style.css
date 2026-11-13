@@ -283,3 +283,8 @@ input.is-locked { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
 .collapsible-toggle { display: flex; justify-content: space-between; align-items: center; padding: 12px var(--control-padding-x);
   background: #f8fafc; font-size: var(--control-font-size); font-weight: bold; color: #475569; cursor: pointer; }
 .collapsible-toggle .material-symbols-outlined { font-size: 18px; transition: transform 0.2s; }
+
+/* 新規登録モーダルの上部に出す「前回の入力内容が残っています」の案内（12_upload_draft.js） */
+.draft-banner { margin: 0 0 16px; padding: 12px; border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px; font-size: 13px; color: #78350f; }
+.draft-banner-message { margin-bottom: 8px; line-height: 1.5; }
+.draft-banner-actions { display: flex; justify-content: flex-end; gap: 8px; }
