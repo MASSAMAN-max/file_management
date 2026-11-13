@@ -9,18 +9,15 @@
  * 【保存するもの】入力欄の値・タグ・紐付け案件・OCRの設定、選んだファイル本体（写真など）。サーバーには何も送らない。
  *
  * 【保存の種類（id と state）】
- *   create-current       … state "draft"      入力途中の下書き（常に1件。入力のたびに上書き）
- *   create-batch-<時刻>  … state "submitting" 「登録する」を押したあとの、登録処理中のデータ。全ファイルの登録が終われば削除される。
- *                                              ページが途中で終了すると、これが残る（＝中断された可能性がある）
- *                          state "failed"     一部のファイルの登録に失敗した。失敗したファイルだけが残る
- *   登録に成功したファイルは、1件ずつ端末から外す。「サーバーで保存できたあと」にだけ消す。
+ *   create-current … state "draft"  入力途中の下書き（常に1件。入力のたびに上書き）
+ *   「登録する」を押すと、下書きは送信キュー（13_send_queue.js）へ移り、ここの下書きは消える（discardCurrent）。
+ *   送信待ち・送信中・失敗の管理と、サーバーで保存できたあとの削除は、送信キューが行う。
+ *   ※ 第1段階の版が作った state "submitting"／"failed" の保存データ（id が create-batch-…）が端末に残っている場合は、
+ *     このファイルの案内（バナー）から「続きから再開」できる。新しい版では、これらは作られない（救済用）。
  *
  * 【復元の流れ】モーダルを開くと、保存データがあれば画面上部に案内（バナー）を出す。「続きから再開」か「破棄する」を選ぶ。
  *   案内を出している間は、自動保存を止める（保存済みのデータを、空の入力欄で上書きしないため）。
- *   案内は1回に1件。入力途中の下書きを先に、次に登録に失敗・中断したデータ（新しい順）。
- *
- * 【第1段階の限界】登録の途中で中断されたデータを再開すると、1段目（仮登録）が済んでいたファイルは、もう一度仮登録される。
- *   2段目まで終わらなかった仮登録の行は、一覧に残る（ゴミ箱へ移動できる）。第2段階で、同じファイルIDのまま再開できるようにする予定。
+ *   案内は1回に1件。入力途中の下書きを先に、次に古い版が残した保存データ（新しい順）。
  *
  * 【依存】11_draft_store.js（DraftStore）、02_state.js（pendingLinks）、03_utils.js、06_upload.js、10_project_picker.js（projectPickers）
  *   ※ 06_upload.js から実行時に呼ばれる。読み込み順は、10 の後。
@@ -28,7 +25,6 @@
 const UploadDraft = (function () {
   // ---- 定数 ----
   const CURRENT_ID = "create-current";
-  const BATCH_ID_PREFIX = "create-batch-";
   const STATE_DRAFT = "draft";
   const STATE_SUBMITTING = "submitting";
   const STATE_FAILED = "failed";
@@ -41,7 +37,6 @@ const UploadDraft = (function () {
   let bannerRecord = null;        // 案内に出している保存データ
   let hasWarnedStorage = false;   // 容量不足の通知は、1回だけ出す
   let hasRequestedPersist = false;
-  const inFlightBatchIds = new Set(); // このページで登録処理中のデータ（案内に出さない）
 
   // =================================================================
   // 保存庫への処理（順番を守る）
@@ -208,7 +203,7 @@ const UploadDraft = (function () {
   }
 
   // =================================================================
-  // 登録処理中のデータ（06_upload.js の handleCreateSubmit から呼ばれる）
+  // 登録ボタンを押したあと（06_upload.js の handleCreateSubmit から呼ばれる）
   // =================================================================
 
   /** 「登録する」を押した直後：下書きの自動保存を止める（最新の入力内容は、先に保存しておく） */
@@ -224,44 +219,17 @@ const UploadDraft = (function () {
   }
 
   /**
-   * 1件以上の仮登録ができたとき：下書きを「登録処理中のデータ」へ移す。
-   * 以降、ファイルは登録に成功するたびに1件ずつ外す（fileSucceeded）。最後に finish を呼ぶ。
-   * ※ 入力内容は、この場で同期的に控える（モーダルを閉じた直後に開き直されても、混ざらないようにするため）。
-   * @param {File[]} files 登録しようとしている全ファイル
-   * @return {{fileSucceeded: function(number), finish: function()}}
+   * 送信キューへ移し終えたとき：入力途中の下書き（入力値とファイル）を、端末から消す。
+   * ※ 失敗しても、登録そのものには影響しない（残った下書きは、次に開いたとき案内に出るだけ）。
    */
-  function startBatch(files) {
-    const batchId = BATCH_ID_PREFIX + Date.now();
-    const values = collectFormValues();
-    inFlightBatchIds.add(batchId);
+  async function discardCurrent() {
     clearTimeout(saveTimer);
     saveTimer = null;
-    isPaused = true; // モーダルを開き直すまで、このフォームを下書きとして保存しない（onModalOpened で再開）
-
-    enqueue(async () => {
-      await DraftStore.replaceFiles(batchId, files);
-      await DraftStore.saveDraft(buildRecord(batchId, STATE_SUBMITTING, values, files.length));
-      await DraftStore.deleteDraft(CURRENT_ID); // 移し終えてから、下書きを消す（途中で止まっても、どちらかは残る）
-    });
-
-    return {
-      /** index 番目のファイルの登録が、サーバーで完了した（端末から外す） */
-      fileSucceeded(index) {
-        enqueue(() => DraftStore.removeFile(batchId, index));
-      },
-      /** 全ファイルの処理が終わった。残っているファイルがなければ削除し、あれば「失敗」として残す */
-      finish() {
-        const cleanup = () => { inFlightBatchIds.delete(batchId); }; // 成功・失敗のどちらでも、処理中の目印を外す
-        enqueue(async () => {
-          const remaining = await DraftStore.countFiles(batchId);
-          if (remaining === 0) {
-            await DraftStore.deleteDraft(batchId);
-          } else {
-            await DraftStore.saveDraft(buildRecord(batchId, STATE_FAILED, values, remaining));
-          }
-        }).then(cleanup, cleanup);
-      }
-    };
+    try {
+      await enqueue(() => DraftStore.deleteDraft(CURRENT_ID));
+    } catch (err) {
+      console.warn("下書きの削除に失敗しました:", err);
+    }
   }
 
   // =================================================================
@@ -285,7 +253,7 @@ const UploadDraft = (function () {
     const when = new Date(record.updatedAt).toLocaleString("ja-JP",
       { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
     const fileText = record.fileCount > 0 ? `・ファイル${record.fileCount}件` : "";
-    if (record.state === STATE_SUBMITTING) {
+    if (record.state === STATE_SUBMITTING) { // 第1段階の版が残したデータ
       return `前回の登録が途中で中断された可能性があります（${when}${fileText}）。` +
         "一覧に登録済みのファイルがないか確認してから、続きを登録してください。";
     }
@@ -306,8 +274,7 @@ const UploadDraft = (function () {
     if (!isModalOpen()) return; // 読み込み中に閉じられた
 
     const userName = getLoginUserName();
-    const mine = records.filter(record =>
-      record.kind === "create" && record.userName === userName && !inFlightBatchIds.has(record.id));
+    const mine = records.filter(record => record.kind === "create" && record.userName === userName);
     if (mine.length === 0) return;
 
     mine.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -428,7 +395,7 @@ const UploadDraft = (function () {
 
   return {
     onModalOpened, flushSave, onFilesChanged,
-    pauseForSubmit, resumeAfterSubmitFailure, startBatch,
+    pauseForSubmit, resumeAfterSubmitFailure, discardCurrent,
     clearAll
   };
 })();
