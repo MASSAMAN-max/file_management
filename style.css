@@ -288,3 +288,17 @@ input.is-locked { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
 .draft-banner { margin: 0 0 16px; padding: 12px; border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px; font-size: 13px; color: #78350f; }
 .draft-banner-message { margin-bottom: 8px; line-height: 1.5; }
 .draft-banner-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* 一覧の上部に出す「未送信」の帯（14_send_queue_bar.js）。失敗があるときは赤系にする */
+.send-queue-bar { margin-bottom: 16px; padding: 12px 16px; border-radius: 12px; border: 1px solid #bfdbfe; background: #eff6ff; color: #1e3a8a; font-size: 14px; }
+.send-queue-bar.has-failed { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+.send-queue-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.send-queue-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.send-queue-detail-btn { background: white; color: #334155; border: 1px solid #cbd5e1; }
+.send-queue-list { margin-top: 10px; border-top: 1px solid rgba(0,0,0,0.08); }
+.send-queue-row { padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 13px; color: #334155; }
+.send-queue-row-head { display: flex; justify-content: space-between; gap: 8px; }
+.send-queue-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
+.send-queue-row-status { flex-shrink: 0; color: #475569; }
+.send-queue-row-status.is-failed { color: #b91c1c; font-weight: bold; }
+.send-queue-row-reason { margin: 4px 0; color: #64748b; white-space: pre-wrap; word-break: break-word; }
