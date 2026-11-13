@@ -30,7 +30,10 @@
     const failedCount = state.items.filter(item => item.status === "failed").length;
     if (state.isRunning && state.progress && state.progress.total > 0) {
       const current = Math.min(state.progress.done + 1, state.progress.total);
-      return `送信中… ${current}/${state.progress.total}件（画面を閉じても、端末に保存されているので失われません）`;
+      // 大きなファイルは、分割して送るため、進み具合（％）も出す
+      const percent = state.fileProgress && state.fileProgress.total > 0
+        ? `（${Math.floor(state.fileProgress.sent * 100 / state.fileProgress.total)}%）` : "";
+      return `送信中… ${current}/${state.progress.total}件${percent}（画面を閉じても、端末に保存されているので失われません）`;
     }
     if (!state.isOnline) {
       return `通信できません。未送信の${total}件を端末に保存しています。通信が回復したら自動で送信します。`;
