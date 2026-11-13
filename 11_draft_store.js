@@ -3,8 +3,9 @@
  * 入力途中のデータを、端末の IndexedDB に保存・取得・削除する「保存庫」。
  *
  * 【役割】フォームの入力値と、選んだファイル（写真など）を端末内に置く。
- *         画面（フォーム）の中身は知らない。「何を保存するか」は呼び出し側（12_upload_draft.js）が決める。
- *         第2段階以降の送信待ちデータ（pending／uploading／failed）にも、同じ保存庫を使う予定。
+ *         画面（フォーム）の中身は知らない。「何を保存するか」は呼び出し側が決める。
+ *           ・12_upload_draft.js … 入力途中の下書き
+ *           ・13_send_queue.js   … 送信待ちのファイル（ファイル行に status・clientKey・fileId などの項目を足して使う）
  * 【なぜ IndexedDB か】localStorage は文字列のみ・容量が小さい（目安5MB）ため、写真（Blob）を保存できない。
  *         IndexedDB は、ファイルをそのまま保存できる。
  * 【保存の構造】
@@ -154,17 +155,25 @@ const DraftStore = (function () {
   }
 
   /**
+   * あるデータのファイル行を、連番の順に取り出す（ファイル本体は Blob のまま。状態などの項目も含む）。
+   * @return {Promise<Object[]>}
+   */
+  function getFileRows(draftId) {
+    return runTransaction([STORE_FILES], "readonly", s => s[STORE_FILES].getAll(fileKeyRange(draftId)))
+      .then(rows => rows.sort((a, b) => a.seq - b.seq));
+  }
+
+  /** ファイル行から、File オブジェクトを作る（名前・種類・更新日時を元どおりにする） */
+  function rowToFile(row) {
+    return new File([row.blob], row.name, { type: row.type, lastModified: row.lastModified });
+  }
+
+  /**
    * あるデータのファイルを、連番の順に取り出す。
    * @return {Promise<Array<{seq: number, file: File}>>}
    */
   function getFiles(draftId) {
-    return runTransaction([STORE_FILES], "readonly", s => s[STORE_FILES].getAll(fileKeyRange(draftId)))
-      .then(rows => rows
-        .sort((a, b) => a.seq - b.seq)
-        .map(row => ({
-          seq: row.seq,
-          file: new File([row.blob], row.name, { type: row.type, lastModified: row.lastModified })
-        })));
+    return getFileRows(draftId).then(rows => rows.map(row => ({ seq: row.seq, file: rowToFile(row) })));
   }
 
   /** あるデータに残っているファイルの数（ファイル本体は読み込まない） */
@@ -175,6 +184,46 @@ const DraftStore = (function () {
   /** あるデータのファイルを、連番を指定して1つ外す（登録が終わったファイルを、端末から外すときに使う） */
   function removeFile(draftId, seq) {
     return runTransaction([STORE_FILES], "readwrite", s => { s[STORE_FILES].delete(fileKey(draftId, seq)); });
+  }
+
+  // =================================================================
+  // 送信待ち（13_send_queue.js が使う）
+  // =================================================================
+
+  /**
+   * 送信待ちの1件（job）と、そのファイル行を、1つのトランザクションで保存する。
+   * （「jobだけ保存された」「ファイルだけ保存された」状態を作らないため）
+   * @param {Object} job { id, ... }
+   * @param {Array<{file: File, meta: Object}>} items meta は、ファイル行へそのまま足す項目（状態・clientKey など）
+   */
+  function saveJobWithFiles(job, items) {
+    return runTransaction([STORE_DRAFTS, STORE_FILES], "readwrite", s => {
+      s[STORE_DRAFTS].put(job);
+      items.forEach((item, seq) => {
+        s[STORE_FILES].put(Object.assign({
+          key: fileKey(job.id, seq),
+          draftId: job.id,
+          seq: seq,
+          name: item.file.name,
+          type: item.file.type,
+          lastModified: item.file.lastModified,
+          blob: item.file
+        }, item.meta));
+      });
+    });
+  }
+
+  /**
+   * ファイル行の一部の項目だけを書き換える（読み出しと書き込みを1つのトランザクションで行う）。
+   * すでに外されている行なら、何もしない。
+   */
+  function patchFile(draftId, seq, patch) {
+    return runTransaction([STORE_FILES], "readwrite", s => {
+      const request = s[STORE_FILES].get(fileKey(draftId, seq));
+      request.onsuccess = () => {
+        if (request.result) s[STORE_FILES].put(Object.assign({}, request.result, patch));
+      };
+    });
   }
 
   // =================================================================
@@ -192,7 +241,8 @@ const DraftStore = (function () {
 
   return {
     saveDraft, getDraft, listDrafts, deleteDraft, clearAll,
-    replaceFiles, getFiles, countFiles, removeFile,
+    replaceFiles, getFiles, getFileRows, rowToFile, countFiles, removeFile,
+    saveJobWithFiles, patchFile,
     requestPersistentStorage
   };
 })();
