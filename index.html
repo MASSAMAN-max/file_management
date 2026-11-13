@@ -63,6 +63,18 @@
     </div>
   </div>
 
+  <!-- 未送信のファイルがあるときだけ表示する帯（14_send_queue_bar.js）。端末に保存している送信待ちの状況と、「今すぐ送信」 -->
+  <div id="sendQueueBar" class="send-queue-bar" hidden>
+    <div class="send-queue-summary">
+      <span id="sendQueueText"></span>
+      <span class="send-queue-actions">
+        <button type="button" id="sendQueueDetailBtn" class="btn btn-sm send-queue-detail-btn">詳細</button>
+        <button type="button" id="sendQueueRetryBtn" class="btn btn-success btn-sm">今すぐ送信</button>
+      </span>
+    </div>
+    <div id="sendQueueList" class="send-queue-list" hidden></div>
+  </div>
+
   <!-- 検索・フィルターセクション -->
   <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 24px;">
     <div style="font-size: 22px; font-weight: bold; color: #1e293b; margin-bottom: 16px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
@@ -527,6 +539,8 @@
     10_project_picker.js … 案件選択部品
     11_draft_store.js    … 入力途中データの保存庫（IndexedDB）
     12_upload_draft.js   … 新規登録の入力内容の自動保存・復元
+    13_send_queue.js     … 送信キュー（端末に保存 → 通信できるときに自動送信・中断再開）
+    14_send_queue_bar.js … 一覧上部の「未送信」の帯
   ※ GASのURLなど環境ごとの設定は config.js（<head>で読み込み）にある。
 -->
 <script src="01_config.js"></script>
@@ -541,5 +555,7 @@
 <script src="10_project_picker.js"></script>
 <script src="11_draft_store.js"></script>
 <script src="12_upload_draft.js"></script>
+<script src="13_send_queue.js"></script>
+<script src="14_send_queue_bar.js"></script>
 </body>
 </html>
