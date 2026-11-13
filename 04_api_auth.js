@@ -307,6 +307,8 @@ window.handleLogout = async function() {
         console.error("サーバー側のトークン失効に失敗しました:", revokeErr);
       }
     }
+    // 端末に保存している入力途中のデータ（選んだファイルを含む）も消す。共有の端末で、次の人に見えないようにするため
+    await Promise.race([UploadDraft.clearAll(), new Promise(resolve => setTimeout(resolve, 2000))]);
     clearLoginStorage();
     window.location.reload();
   }
