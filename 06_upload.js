@@ -28,6 +28,15 @@
 
 // 一度に登録できるファイル数の上限（1件ごとにbase64を送るため、GASの実行時間を考えた値）
 const MAX_UPLOAD_FILES = 10;
+// 1ファイルの最大サイズ（バイト）。サーバー側（16_分割アップロード.js の MAX_UPLOAD_BYTES）と同じ値にそろえる
+const MAX_UPLOAD_FILE_BYTES = 20 * 1024 * 1024;
+
+/** 上限を超えているファイルがあれば、案内の文章を返す（問題がなければ空文字） */
+function findOversizedFileMessage(files) {
+  const oversized = files.find(file => file.size > MAX_UPLOAD_FILE_BYTES);
+  if (!oversized) return "";
+  return `1ファイルの上限は${MAX_UPLOAD_FILE_BYTES / 1024 / 1024}MBです。「${oversized.name}」は大きすぎるため、選び直してください。`;
+}
 
 // =================================================================
 // 新規登録（S03）：仮登録→OCR反映→確定保存フロー（設計書9章）
@@ -80,6 +89,11 @@ window.onUploadFilesChanged = function() {
   if (fileInput.files.length > MAX_UPLOAD_FILES) {
     showToast(`一度に登録できるのは${MAX_UPLOAD_FILES}件までです。選び直してください。`);
     fileInput.value = ""; // 上限を超えたまま登録されないよう、選択を取り消す
+  }
+  const oversizedMessage = findOversizedFileMessage(getSelectedUploadFiles());
+  if (oversizedMessage) {
+    showToast(oversizedMessage);
+    fileInput.value = ""; // 大きすぎるファイルが混ざったまま登録されないよう、選択を取り消す
   }
   renderUploadFileSummary();
   renderUploadFileList();
@@ -254,6 +268,11 @@ async function handleCreateSubmit(event) {
   if (files.length === 0) return;
   if (files.length > MAX_UPLOAD_FILES) {
     showToast(`一度に登録できるのは${MAX_UPLOAD_FILES}件までです。選び直してください。`);
+    return;
+  }
+  const oversizedMessage = findOversizedFileMessage(files);
+  if (oversizedMessage) {
+    showToast(oversizedMessage);
     return;
   }
 
