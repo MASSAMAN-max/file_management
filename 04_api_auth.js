@@ -20,7 +20,8 @@
  *   ・以前のバージョンが端末に保存していた ID・パスワード（fs_login_id / fs_login_password）は、
  *     起動時に必ず削除する。
  *   ・ログインの有効期限切れ（AUTH_EXPIRED）は、再試行せず、再ログインへ誘導する。
- *   ・ログアウト時は、サーバー側のトークンも失効させる。
+ *   ・ログアウト時は、サーバー側のトークンも失効させる。端末に保存している入力途中のデータ・未送信のファイルは削除する
+ *     （未送信が残っているときは、削除前に確認する）。ログイン切れ（AUTH_EXPIRED）では削除しない（再ログインすると、続きから送信される）。
  */
 
 // =====================================================================
@@ -250,6 +251,9 @@ async function initializeApp() {
     // 案件マスタ（紐付け入力欄の選択肢）は、画面を表示した後に裏で読み込む（待たずに操作できる）
     loadProjectsInBackground();
 
+    // 端末に残っている未送信のファイルがあれば、続きから送信する（13_send_queue.js）
+    SendQueue.start();
+
   } catch (err) {
     loader.style.display = "none";
     pendingLoginCredentials = null;
@@ -293,6 +297,21 @@ window.handleLogout = async function() {
     cancelButtonText: 'キャンセル'
   });
   if (result.isConfirmed) {
+    // 未送信のファイルが端末に残っていると、ログアウトで削除されて送信されなくなるため、もう一度確認する
+    const unsentCount = SendQueue.getUnsentCount();
+    if (unsentCount > 0) {
+      const warning = await Swal.fire({
+        icon: 'warning',
+        title: '未送信のファイルがあります',
+        text: `未送信のファイルが${unsentCount}件あります。ログアウトすると、端末に保存されているこれらのファイルは削除され、送信されません。それでもログアウトしますか？`,
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: '削除してログアウト',
+        cancelButtonText: 'キャンセル'
+      });
+      if (!warning.isConfirmed) return;
+    }
     // サーバー側のトークンも失効させる（端末から消すだけでは、漏れたトークンが使えてしまうため）。
     // 直後にページを再読み込みして通信が打ち切られるため、完了を待つ。ただし長く待たせないよう最大3秒まで。
     // 失敗・時間切れでも、ログアウト自体は続行する（トークンは、期限が来れば無効になる）。
