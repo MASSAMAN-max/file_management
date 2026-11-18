@@ -48,12 +48,16 @@ window.openDetailModal = function(record) {
   // Driveプレビュー（画像・PDF・Office文書いずれもDriveの標準プレビューiframeで表示可能）
   const previewArea = document.getElementById("detailPreviewArea");
   const driveFileId = extractDriveFileId(record["DriveファイルURL"]);
+  // 大きさ・配置は style.css（.detail-preview-frame）で決める。PC画面では左側に表示される
   previewArea.innerHTML = driveFileId
-    ? `<iframe src="https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/preview" style="width:100%; height:min(320px, 38vh); border:1px solid #e2e8f0; border-radius:8px;" allow="autoplay"></iframe>`
-    : '<div style="color:#94a3b8; font-size:13px;">プレビューを表示できません（Drive保存前のファイルです）</div>';
+    ? `<iframe class="detail-preview-frame" src="https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/preview" allow="autoplay"></iframe>`
+    : '<div class="detail-preview-empty">プレビューを表示できません（Drive保存前のファイルです）</div>';
 
   document.getElementById("detailModal").style.display = "flex";
-  document.querySelector("#detailModal .modal-body").scrollTop = 0; // 一覧から開いたときは、常に一番上から表示する
+  // 一覧から開いたときは、常に一番上から表示する。
+  // 狭い画面は本文全体、PC画面（プレビューを左に表示）はフォームだけがスクロールするため、両方を戻す
+  document.querySelector("#detailModal .modal-body").scrollTop = 0;
+  document.getElementById("detailForm").scrollTop = 0;
 
   // 変更検知の基準にする、開いた時点の入力内容。
   // 確定済みファイルの更新では、変更が無い間は「更新する」を押せない（前回エラーで無効化されたままの状態もここで解除される）
@@ -172,6 +176,30 @@ async function confirmDetailChanges(changes) {
   return result.isConfirmed;
 }
 
+/** 金額（税抜・税込）が、両方とも「空または0」か。確定保存・更新の前の確認に使う */
+function isAmountBlankOrZero() {
+  const isBlankOrZero = (digits) => digits === "" || Number(digits) === 0; // 金額欄の値は数字（と小数点）だけの文字列
+  return isBlankOrZero(getAmountInputValue("detailAmountExcl")) && isBlankOrZero(getAmountInputValue("detailAmountIncl"));
+}
+
+/**
+ * 金額が空（または0）のまま保存してよいかを確認する。保存する場合は true
+ * 「戻る」を選んだときは、金額（税込）の入力欄にカーソルを戻す
+ * @param {string} actionLabel 確認文とボタンに出す操作名（「確定」「更新」）
+ */
+async function confirmBlankAmount(actionLabel) {
+  const result = await Swal.fire({
+    title: "金額が入力されていません",
+    text: `金額（税抜・税込）が空、または0のままです。このまま${actionLabel}しますか？`,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: `このまま${actionLabel}する`,
+    cancelButtonText: "戻って入力する"
+  });
+  if (!result.isConfirmed) document.getElementById("detailAmountIncl").focus();
+  return result.isConfirmed;
+}
+
 bindTaxInputs("detailTaxRate", "detailAmountExcl", "detailAmountIncl", "detailCurrency");
 
 // 入力欄・セレクト・タグ・案件の変更を検知して、「更新する」ボタンの有効／無効を切り替える
@@ -194,6 +222,9 @@ async function handleDetailSubmit(event) {
     if (changes.length === 0) return;
     if (!(await confirmDetailChanges(changes))) return;
   }
+
+  // 確定保存・更新のどちらも、金額が空（または0）なら確認を挟む（二重送信防止のボタン無効化より前に行う）
+  if (isAmountBlankOrZero() && !(await confirmBlankAmount(mode === "confirm" ? "確定" : "更新"))) return;
 
   // 二重送信防止：押した瞬間にボタンを無効化する
   const submitBtn = document.getElementById("detailSubmitBtn");
