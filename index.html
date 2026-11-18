@@ -272,12 +272,12 @@
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group" style="flex:1 1 200px;">
+        <div class="form-group" style="flex:1 1 0;">
           <label>書類種別</label>
           <select id="uploadUseTypeId"><option value="">未設定（ファイル名から自動判定）</option></select>
         </div>
         <!-- タグ選択部品（ドロップダウン＋トグルスイッチ）が描画される。03_utils.js の renderTagCheckboxesInto -->
-        <div class="form-group" style="flex:1 1 200px;">
+        <div class="form-group" style="flex:1 1 0;">
           <label>タグ</label>
           <div id="uploadTagCheckboxes"></div>
         </div>
@@ -350,7 +350,7 @@
 
 <!-- 詳細確認・確定保存／編集モーダル（S04・S05・S06を統合した簡易版） -->
 <div id="detailModal" class="modal-overlay" style="display:none;">
-  <div class="modal-content" style="max-width:640px; padding:0;">
+  <div class="modal-content detail-modal-content" style="padding:0;">
     <div class="modal-header">
       <button type="button" class="modal-close-btn" onclick="closeDetailModal()" aria-label="閉じる">
         <span class="material-symbols-outlined">close</span>
@@ -360,7 +360,7 @@
     <div class="modal-body">
 
     <!-- Driveプレビュー（画像・PDF・Office文書すべてDriveの標準プレビューで表示できるため形式分岐は不要） -->
-    <div id="detailPreviewArea" style="position:sticky; top:0; z-index:3; background:white; padding-bottom:8px; margin-bottom:8px;"></div>
+    <div id="detailPreviewArea" class="detail-preview-area"></div>
     <form id="detailForm" onsubmit="handleDetailSubmit(event)">
       <input type="hidden" id="detailFileId">
       <input type="hidden" id="detailRowNumber">
@@ -389,12 +389,12 @@
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group" style="flex:1 1 200px;">
+        <div class="form-group" style="flex:1 1 0;">
           <label>書類種別</label>
           <select id="detailUseTypeId"><option value="">未設定</option></select>
         </div>
         <!-- タグ選択部品（ドロップダウン＋トグルスイッチ）が描画される。03_utils.js の renderTagCheckboxesInto -->
-        <div class="form-group" style="flex:1 1 200px;">
+        <div class="form-group" style="flex:1 1 0;">
           <label>タグ</label>
           <div id="detailTagCheckboxes"></div>
         </div>
