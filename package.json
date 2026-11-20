@@ -1,0 +1,10 @@
+{
+  "name": "file-management-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ファイル管理アプリ（静的ファイル＋画像・PDFの回転API）",
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "sharp": "^0.35.5"
+  }
+}
