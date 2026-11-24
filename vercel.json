@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/rotate.js": { "maxDuration": 60 },
-    "api/detect-orientation.js": {
+    "api/detect_orientation.js": {
       "maxDuration": 60,
       "memory": 1024,
       "includeFiles": "{tessdata/**,node_modules/tesseract.js/**,node_modules/tesseract.js-core/**,node_modules/pdfjs-dist/legacy/build/**}"
