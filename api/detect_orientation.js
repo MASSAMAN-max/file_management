@@ -1,5 +1,5 @@
 /**
- * 画像・PDFの向き判定API（POST /api/detect-orientation）【調査用・読み取り専用】
+ * 画像・PDFの向き判定API（POST /api/detect_orientation.js）【調査用・読み取り専用】
  * =====================================================================
  * Drive上のファイルを読み込み、Tesseract OSD で向きを判定して、結果をそのまま返す。
  * ファイルは書き換えない（rotate.js と違い、replaceContent も appProperties の更新も行わない）。
