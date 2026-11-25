@@ -1,7 +1,7 @@
 /**
  * 画像・PDFの回転API（POST /api/rotate）
  * =====================================================================
- * ファイル管理アプリ（GAS）が、OCRで読み取った向きに合わせて、Drive上のファイルを回転して保存するために呼ぶ。
+ * ファイル管理アプリ（GAS）が、向きの判定（api/detect_orientation）の結果に合わせて、Drive上のファイルを回転して保存するために呼ぶ。
  * GAS には、画像・PDFを回転する機能が無いため、この関数が代わりに行う。
  *
  * 【リクエスト（JSON）】
@@ -23,20 +23,11 @@
  *   ・回転して保存したファイルには、目印（appProperties: ocrRotatedAt）を付け、同じファイルを2回回してしまうことを防ぐ
  *   ・アクセストークン・合言葉は、ログに出さない
  */
-const crypto = require("crypto");
 const { rotateFileBytes } = require("../lib/rotateCore");
 const drive = require("../lib/driveClient");
+const { isValidSecret, MAX_FILE_BYTES } = require("../lib/apiCommon");
 
-const MAX_FILE_BYTES = 25 * 1024 * 1024; // アプリのアップロード上限（20MB）に、余裕を持たせた大きさ
 const MAX_PAGES = 300;
-
-/** 合言葉を、時間差で推測されにくい方法で比べる */
-function isValidSecret(given) {
-  const expected = process.env.ROTATE_API_SECRET;
-  if (!expected || typeof given !== "string") return false;
-  const hash = (text) => crypto.createHash("sha256").update(text).digest();
-  return crypto.timingSafeEqual(hash(given), hash(expected));
-}
 
 /** 依頼の内容を確認し、回転の指定（{rotation} または {pageRotations}）を返す。不正なら null */
 function parseRotationRequest(body) {
