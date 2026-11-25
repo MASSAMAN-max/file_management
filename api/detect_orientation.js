@@ -1,5 +1,5 @@
 /**
- * 画像・PDFの向き判定API（POST /api/detect_orientation.js）【調査用・読み取り専用】
+ * 画像・PDFの向き判定API（POST /api/detect_orientation）【調査用・読み取り専用】
  * =====================================================================
  * Drive上のファイルを読み込み、Tesseract OSD で向きを判定して、結果をそのまま返す。
  * ファイルは書き換えない（rotate.js と違い、replaceContent も appProperties の更新も行わない）。
@@ -10,6 +10,7 @@
  *   secret       … 合言葉（Vercelの環境変数 ROTATE_API_SECRET。rotate.js と共通）
  *   driveFileId  … 判定するDriveのファイルID
  *   accessToken  … GASが渡す、Driveの一時的なアクセストークン（ScriptApp.getOAuthToken()）
+ *   includeImage … true のとき、判定に使った画像（縮小したJPEG・先頭ページだけ）を previewJpegBase64 で返す（調査用）
  *
  * 【レスポンス（JSON）】
  *   画像：{ ok: true, mimeType, result: { kind: "image", rotation, confidence, script, exifOrientation } }
@@ -58,7 +59,7 @@ module.exports = async function handler(req, res) {
 
     const original = await drive.download(accessToken, driveFileId);
     const startedAt = Date.now();
-    const result = await detectOrientation(original, meta.mimeType);
+    const result = await detectOrientation(original, meta.mimeType, { includeImage: body.includeImage === true });
     if (result.skipped && !result.kind) return skip(result.skipped);
 
     return res.status(200).json({ ok: true, mimeType: meta.mimeType, elapsedMs: Date.now() - startedAt, result: result });
