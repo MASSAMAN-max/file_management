@@ -1,16 +1,14 @@
 /**
- * 画像・PDFの向き判定API（POST /api/detect_orientation）【調査用・読み取り専用】
+ * 画像・PDFの向き判定API（POST /api/detect_orientation）【読み取り専用】
  * =====================================================================
- * Drive上のファイルを読み込み、Tesseract OSD で向きを判定して、結果をそのまま返す。
+ * Drive上のファイルを読み込み、Tesseract OSD で向きを判定して、結果を返す。
  * ファイルは書き換えない（rotate.js と違い、replaceContent も appProperties の更新も行わない）。
- * 「OSDがどんな角度・信頼度を返すか」を、実際の書類で確認するための関数。
- * 結果を見て、採用する場合は、18_画像向き補正.js（OCRの向きの代わり）に組み込む。
+ * GAS の 18_画像向き補正.js が、OCRの前に呼ぶ。結果の採用（信頼度の基準）は、呼び出し側が決める。
  *
  * 【リクエスト（JSON）】rotate.js と同じ（rotation・pageRotations は不要）
  *   secret       … 合言葉（Vercelの環境変数 ROTATE_API_SECRET。rotate.js と共通）
  *   driveFileId  … 判定するDriveのファイルID
  *   accessToken  … GASが渡す、Driveの一時的なアクセストークン（ScriptApp.getOAuthToken()）
- *   includeImage … true のとき、判定に使った画像（縮小したJPEG・先頭ページだけ）を previewJpegBase64 で返す（調査用）
  *
  * 【レスポンス（JSON）】
  *   画像：{ ok: true, mimeType, result: { kind: "image", rotation, confidence, script, exifOrientation } }
@@ -20,22 +18,10 @@
  *   { ok: false, error: "原因" }       … 失敗（401 合言葉が違う / 400 依頼が不正 / 502 Drive・処理の失敗）
  *
  * 【安全のための決まり】rotate.js と同じ（合言葉の確認・Driveが返した種類で判断・ゴミ箱と大きすぎるファイルは処理しない・
- *   トークンと合言葉はログに出さない）。
- * ※ isValidSecret と上限の値は rotate.js と同じ内容。本番に組み込むときに、lib/ へ共通化する（今は rotate.js に触れないため複製）。
- */
-const crypto = require("crypto");
+ *   トークンと合言葉はログに出さない）。 */
 const { detectOrientation } = require("../lib/osdCore");
 const drive = require("../lib/driveClient");
-
-const MAX_FILE_BYTES = 25 * 1024 * 1024; // rotate.js と同じ
-
-/** 合言葉を、時間差で推測されにくい方法で比べる（rotate.js と同じ） */
-function isValidSecret(given) {
-  const expected = process.env.ROTATE_API_SECRET;
-  if (!expected || typeof given !== "string") return false;
-  const hash = (text) => crypto.createHash("sha256").update(text).digest();
-  return crypto.timingSafeEqual(hash(given), hash(expected));
-}
+const { isValidSecret, MAX_FILE_BYTES } = require("../lib/apiCommon");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST で呼び出してください。" });
@@ -59,7 +45,7 @@ module.exports = async function handler(req, res) {
 
     const original = await drive.download(accessToken, driveFileId);
     const startedAt = Date.now();
-    const result = await detectOrientation(original, meta.mimeType, { includeImage: body.includeImage === true });
+    const result = await detectOrientation(original, meta.mimeType);
     if (result.skipped && !result.kind) return skip(result.skipped);
 
     return res.status(200).json({ ok: true, mimeType: meta.mimeType, elapsedMs: Date.now() - startedAt, result: result });
