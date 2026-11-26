@@ -317,10 +317,12 @@ input.is-locked { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
   .detail-preview-area { position: static; flex: 1 1 55%; min-width: 0; padding: 0; margin: 0; }
   .detail-preview-frame { height: 100%; }
   #detailForm { flex: 1 1 45%; min-width: 0; overflow-y: auto; padding-right: 4px; }
+}
 
-/* 詳細モーダルの見出し（ID＋表示名）。長い表示名は省略表示にして、✕ボタンと重ならないようにする */
+/* 詳細モーダルの見出し（ID＋未／済バッジ＋表示名）。長い表示名は省略表示にして、✕ボタンと重ならないようにする */
 .detail-modal-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .detail-modal-title .badge-no { font-size: 13px; padding: 3px 8px; flex-shrink: 0; }
+.detail-modal-title .badge-status { flex-shrink: 0; }
 .detail-modal-display-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 詳細モーダル下部の「前へ／次へ」バー。modal-body の外に置くため、本文がスクロールしても固定される */
@@ -330,4 +332,3 @@ input.is-locked { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
 .detail-nav-btn:hover:not(:disabled) { background: #e2e8f0; }
 .detail-nav-btn .material-symbols-outlined { font-size: 20px; }
 .detail-nav-position { font-size: 13px; font-weight: bold; color: #475569; }
-}
