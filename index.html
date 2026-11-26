@@ -355,7 +355,10 @@
       <button type="button" class="modal-close-btn" onclick="closeDetailModal()" aria-label="閉じる">
         <span class="material-symbols-outlined">close</span>
       </button>
-      <h2 id="detailModalTitle" class="modal-title"></h2>
+      <h2 id="detailModalTitle" class="modal-title detail-modal-title">
+        <span id="detailModalFileId" class="badge-no"></span>
+        <span id="detailModalDisplayName" class="detail-modal-display-name"></span>
+      </h2>
     </div>
     <div class="modal-body">
 
@@ -443,6 +446,16 @@
         <button type="submit" id="detailSubmitBtn" class="btn btn-success">確定保存</button>
       </div>
     </form>
+    </div>
+    <!-- 前のファイル／次のファイルへの移動バー（07_detail.js の moveDetail）。本文がスクロールしても、常に画面下に表示される -->
+    <div class="detail-nav">
+      <button type="button" id="detailNavPrevBtn" class="btn detail-nav-btn" onclick="moveDetail(-1)">
+        <span class="material-symbols-outlined">chevron_left</span> 前へ
+      </button>
+      <span id="detailNavPosition" class="detail-nav-position"></span>
+      <button type="button" id="detailNavNextBtn" class="btn detail-nav-btn" onclick="moveDetail(1)">
+        次へ <span class="material-symbols-outlined">chevron_right</span>
+      </button>
     </div>
   </div>
 </div>
