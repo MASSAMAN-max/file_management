@@ -4,7 +4,7 @@
  * =====================================================================
  * 【役割】
  *   詳細モーダルの表示、仮登録の確定保存・確定済みの編集、案件Noの紐付けの追加・解除、ゴミ箱への移動、
- *   一覧の並び順での「前のファイル／次のファイル」への移動
+ *   一覧の並び順での「前のファイル／次のファイル」への移動（ボタン・←→キー・保存後の自動移動）
  *
  * 【読み込み順】06_upload.js の後。
  * 【依存】02_state.js（detailLinks・currentListRecords・キャッシュ）、03_utils.js（案件No入力・セレクト・確認ダイアログ）、
@@ -23,9 +23,12 @@ window.openDetailModal = function(record) {
   const status = record["レコードステータス"];
   const isConfirmMode = (status === "仮登録"); // 仮登録＝確定保存フロー、通常＝編集フロー
 
-  // 見出しは「ID＋表示名」。確定保存／編集の別は、右下の送信ボタンの文言（確定保存／更新する）で分かる
+  // 見出しは「ID＋未／済バッジ＋表示名」。確定保存／編集の別は、バッジと右下の送信ボタンの文言で分かる
   const headerName = record["表示名"] || record["ファイル名"] || "（無題）";
   document.getElementById("detailModalFileId").textContent = record["ファイルID"];
+  const statusBadgeEl = document.getElementById("detailModalStatusBadge");
+  statusBadgeEl.className = "badge-status " + status; // 色は一覧と同じ（.badge-status.仮登録／.通常）
+  statusBadgeEl.textContent = isConfirmMode ? "未" : "済";
   const headerNameEl = document.getElementById("detailModalDisplayName");
   headerNameEl.textContent = headerName;
   headerNameEl.title = headerName; // 長い名前は省略表示になるため、全文はマウスを乗せると見られる
@@ -86,17 +89,23 @@ window.openDetailModal = function(record) {
 //   ・「前へ」＝一覧の上（新しい方）、「次へ」＝一覧の下（古い方）。ページをまたいで移動する
 //   ・OCR処理中で編集できないファイルは、飛ばして次の編集できるファイルへ移動する
 //   ・未保存の変更があるときは、確認してから移動する
+//   ・キーボードの ← → でも移動できる（入力欄にカーソルがあるときを除く。下の keydown）
+//   ・「確定保存／更新」が成功したあとは、自動で次のファイルを開く（handleDetailSubmit）
 // =================================================================
 
-/** 開いているファイルから見て、指定方向（-1：前／1：次）にある、編集できる最初のレコード。無ければ null */
-function findAdjacentEditableRecord(delta) {
-  const fileId = document.getElementById("detailFileId").value;
+/** 指定したファイルIDから見て、指定方向（-1：前／1：次）にある、編集できる最初のレコード。無ければ null */
+function findAdjacentEditableRecordFrom(fileId, delta) {
   const index = currentListRecords.findIndex(record => record["ファイルID"] === fileId);
   if (index === -1) return null; // 一覧に無い（絞り込みから外れた・ゴミ箱へ移動した場合など）
   for (let i = index + delta; i >= 0 && i < currentListRecords.length; i += delta) {
     if (!isRecordLocked(currentListRecords[i])) return currentListRecords[i];
   }
   return null;
+}
+
+/** いま開いているファイルから見て、指定方向にある、編集できる最初のレコード。無ければ null */
+function findAdjacentEditableRecord(delta) {
+  return findAdjacentEditableRecordFrom(document.getElementById("detailFileId").value, delta);
 }
 
 /** 下部バーの「前へ／次へ」の有効・無効と、「3 / 120」の位置表示を、現在の一覧に合わせる */
@@ -140,6 +149,26 @@ window.moveDetail = async function(delta) {
     isDetailMoving = false;
   }
 };
+
+// キーボード操作：← で前のファイル、→ で次のファイルへ移動する。
+// 次の場合は何もしない（文字入力・カーソル移動・ダイアログ操作を邪魔しないため）。
+//   ・詳細モーダルが閉じているとき／確認ダイアログの表示中
+//   ・入力欄・テキストエリア・セレクトにカーソルがあるとき
+//   ・日本語入力の変換中／修飾キー（Ctrl・Shift・Alt・Cmd）を押しているとき／キーを押しっぱなしのとき
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  if (e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  if (document.getElementById("detailModal").style.display === "none") return;
+  if (window.Swal && Swal.isVisible && Swal.isVisible()) return;
+
+  const el = e.target;
+  const isTextEntry = el instanceof HTMLElement &&
+    (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  if (isTextEntry) return;
+
+  e.preventDefault(); // ページ（モーダル本文）が横にスクロールしないようにする
+  moveDetail(e.key === "ArrowLeft" ? -1 : 1);
+});
 
 // =================================================================
 // 表示名の切り替え（案件に紐付けているときは、保存時に命名規則の名前が自動で入る）
@@ -287,6 +316,12 @@ window.closeDetailModal = function() {
   document.getElementById("detailModal").style.display = "none";
 };
 
+/**
+ * 確定保存・更新。成功したら、一覧の次のファイルを自動で開く（次が無ければモーダルを閉じる）。
+ *   ・次のファイルは、保存する前に決めておく（保存で一覧が再取得されても、移動先がずれないようにするため）
+ *   ・「保存の失敗」と「保存後の一覧の再取得の失敗」は分けて扱う
+ *     （保存は終わっているのに、再取得だけ失敗したとき、同じ内容を二重に保存させないため）
+ */
 async function handleDetailSubmit(event) {
   event.preventDefault();
   const mode = document.getElementById("detailMode").value; // confirm or update
@@ -302,6 +337,10 @@ async function handleDetailSubmit(event) {
   // 確定保存・更新のどちらも、金額が空（または0）なら確認を挟む（二重送信防止のボタン無効化より前に行う）
   if (isAmountBlankOrZero() && !(await confirmBlankAmount(mode === "confirm" ? "確定" : "更新"))) return;
 
+  // 保存後に開くファイルを、保存前に決めておく（無ければ null＝保存後にモーダルを閉じる）
+  const nextRecord = findAdjacentEditableRecord(1);
+  const nextFileId = nextRecord ? nextRecord["ファイルID"] : "";
+
   // 二重送信防止：押した瞬間にボタンを無効化する
   const submitBtn = document.getElementById("detailSubmitBtn");
   submitBtn.disabled = true;
@@ -310,21 +349,42 @@ async function handleDetailSubmit(event) {
 
   showToast(mode === "confirm" ? "確定保存中..." : "更新中...", true);
 
+  // 【保存】失敗した場合、モーダルは開いたままなので、ボタンを再度押せるように戻す
   try {
     await apiCall(action, { fData: collectDetailFormData() });
-
-    closeDetailModal();
-    Swal.close(); // 表示し続けていた「処理中」トーストを閉じてから完了通知に切り替える
-    await reloadAndRender();
-    showToast(mode === "confirm" ? "確定保存が完了しました。" : "更新しました。");
-
   } catch (err) {
     Swal.close();
     showErrorDialog(err);
-    // 失敗した場合、モーダルは開いたままなのでボタンを再度押せるように戻す
     submitBtn.disabled = false;
     submitBtn.textContent = mode === "confirm" ? "確定保存" : "更新する";
     isDetailSaving = false;
+    return;
+  }
+
+  // 【一覧の更新】保存は完了している。ここで失敗しても、同じ内容を保存し直させないよう、モーダルは閉じる
+  Swal.close(); // 表示し続けていた「処理中」トーストを閉じてから完了通知に切り替える
+  try {
+    await reloadAndRender();
+  } catch (err) {
+    closeDetailModal();
+    isDetailSaving = false;
+    showErrorDialog(new Error(`保存は完了しましたが、一覧の更新に失敗しました。画面を再読み込みしてください。（${err.message}）`));
+    return;
+  }
+
+  const doneMessage = mode === "confirm" ? "確定保存が完了しました。" : "更新しました。";
+
+  // 保存前に決めた次のファイルを、更新後の一覧から探して開く（編集できない状態になっていたら、閉じる）
+  const refreshedNext = nextFileId
+    ? currentListRecords.find(record => record["ファイルID"] === nextFileId)
+    : null;
+  if (refreshedNext && !isRecordLocked(refreshedNext)) {
+    openDetailModal(refreshedNext); // isDetailSaving も、ここで元に戻る
+    showToast(`${doneMessage}次のファイルを開きました。`);
+  } else {
+    closeDetailModal();
+    isDetailSaving = false;
+    showToast(doneMessage);
   }
 }
 
