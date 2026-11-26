@@ -61,3 +61,5 @@ let projectListErrorMessage = "";      // error のときに部品へ表示す�
 
 let pendingLinks = []; // 登録モーダル内で追加された紐付け先（案件No）を一時保持
 let detailLinks = [];  // 詳細モーダルで編集中の紐付け先（案件No）。「確定保存／更新」で保存される
+// 一覧に現在表示している（絞り込み・並び替え済みの）レコード全件。詳細モーダルの「前へ／次へ」の移動順に使う（05_list.js の search が更新する）
+let currentListRecords = [];
