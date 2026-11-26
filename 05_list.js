@@ -153,7 +153,12 @@ window.search = function() {
     createdStart: document.getElementById("filterCreatedStartDate").value,
     createdEnd: document.getElementById("filterCreatedEndDate").value
   };
-  displayResults(sortRecordsNewestFirst(filterRecordsClientSide(allRecordsCache, filters)));
+  const records = sortRecordsNewestFirst(filterRecordsClientSide(allRecordsCache, filters));
+  // 詳細モーダルの「前へ／次へ」は、いま一覧に出ている並び順（全ページ分）で移動する
+  currentListRecords = records;
+  displayResults(records);
+  // 詳細モーダルを開いている間に一覧が更新された場合も、移動ボタンの状態を合わせる（07_detail.js）
+  refreshDetailNav();
 };
 
 // 新しい検索条件で探し直す（検索ボタン・Enterキー・クリア）。1ページ目から表示する
@@ -196,6 +201,14 @@ window.changeListPage = function(delta) {
   document.querySelector(".file-list-wrapper").scrollTop = 0;
 };
 
+/**
+ * OCR処理中で、編集・選択ができないレコードか（仮登録 × OCR処理中）。
+ * 一覧の表示（ロック表示・チェックボックス）と、詳細モーダルの「前へ／次へ」で同じ基準を使う。
+ */
+function isRecordLocked(record) {
+  return record["レコードステータス"] === "仮登録" && record["OCRステータス"] === "処理中";
+}
+
 // 並び替え済みのレコードのうち、現在のページ分（LIST_PAGE_SIZE件）だけを描画する。
 // チェックボックスも表示中のページの分だけなので、ZIPダウンロード・ゴミ箱移動は表示中のページ内が対象になる
 function displayResults(records) {
@@ -223,9 +236,8 @@ function displayResults(records) {
 
   pageRecords.forEach(record => {
     const status = record["レコードステータス"] || "通常";
-    const ocrStatus = record["OCRステータス"] || "";
     // 仮登録×OCR処理中の間は編集不可（設計書9-2）。一覧上はロック表示にしてクリックを無効化する
-    const isLocked = (status === "仮登録" && ocrStatus === "処理中");
+    const isLocked = isRecordLocked(record);
     // OCR処理中（ロック中）はDriveファイルが既にアップロード済みでも選択対象から外す
     const isSelectable = !!extractDriveFileId(record["DriveファイルURL"]) && !isLocked;
 
