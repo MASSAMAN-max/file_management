@@ -9,7 +9,8 @@
  *   ・チェックした複数ファイルの一括操作（ZIPダウンロード・ゴミ箱へ移動）
  *
  * 【読み込み順】04_api_auth.js の後。
- * 【依存】02_state.js（キャッシュ）、03_utils.js（escapeHtml・日付変換など）、04_api_auth.js（apiCall）
+ * 【依存】02_state.js（キャッシュ）、03_utils.js（escapeHtml・日付変換など）、04_api_auth.js（apiCall）、
+ *         07_detail.js（refreshDetailNav。実行時に呼ぶだけなので、読み込み順は問わない）
  */
 
 // フィルタ用ドロップダウンを、取得済みレコードの値から重複なく生成する。
@@ -154,9 +155,11 @@ window.search = function() {
     createdEnd: document.getElementById("filterCreatedEndDate").value
   };
   const records = sortRecordsNewestFirst(filterRecordsClientSide(allRecordsCache, filters));
+
   // 詳細モーダルの「前へ／次へ」は、いま一覧に出ている並び順（全ページ分）で移動する
   currentListRecords = records;
   displayResults(records);
+
   // 詳細モーダルを開いている間に一覧が更新された場合も、移動ボタンの状態を合わせる（07_detail.js）
   refreshDetailNav();
 };
