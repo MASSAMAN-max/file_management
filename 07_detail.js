@@ -3,11 +3,18 @@
  * 07_detail.js：ファイル詳細・確定保存／編集
  * =====================================================================
  * 【役割】
- *   詳細モーダルの表示、仮登録の確定保存・確定済みの編集、案件Noの紐付けの追加・解除、ゴミ箱への移動
+ *   詳細モーダルの表示、仮登録の確定保存・確定済みの編集、案件Noの紐付けの追加・解除、ゴミ箱への移動、
+ *   一覧の並び順での「前のファイル／次のファイル」への移動
  *
  * 【読み込み順】06_upload.js の後。
- * 【依存】02_state.js（detailLinks・キャッシュ）、03_utils.js（案件No入力・セレクト・確認ダイアログ）、04_api_auth.js
+ * 【依存】02_state.js（detailLinks・currentListRecords・キャッシュ）、03_utils.js（案件No入力・セレクト・確認ダイアログ）、
+ *         04_api_auth.js、05_list.js（isRecordLocked）
  */
+
+// 保存中は、前後のファイルへの移動を受け付けない（保存の完了前に画面の内容が入れ替わるのを防ぐ）
+let isDetailSaving = false;
+// 移動の確認ダイアログを開いている間の、二重操作防止
+let isDetailMoving = false;
 
 // =================================================================
 // 詳細確認・確定保存／編集（S04・S05・S06統合）
@@ -16,7 +23,14 @@ window.openDetailModal = function(record) {
   const status = record["レコードステータス"];
   const isConfirmMode = (status === "仮登録"); // 仮登録＝確定保存フロー、通常＝編集フロー
 
-  document.getElementById("detailModalTitle").textContent = isConfirmMode ? "内容の確認・確定保存" : "ファイル編集";
+  // 見出しは「ID＋表示名」。確定保存／編集の別は、右下の送信ボタンの文言（確定保存／更新する）で分かる
+  const headerName = record["表示名"] || record["ファイル名"] || "（無題）";
+  document.getElementById("detailModalFileId").textContent = record["ファイルID"];
+  const headerNameEl = document.getElementById("detailModalDisplayName");
+  headerNameEl.textContent = headerName;
+  headerNameEl.title = headerName; // 長い名前は省略表示になるため、全文はマウスを乗せると見られる
+
+  isDetailSaving = false;
   document.getElementById("detailMode").value = isConfirmMode ? "confirm" : "update";
   document.getElementById("detailFileId").value = record["ファイルID"];
   document.getElementById("detailRowNumber").value = record["_rowNumber"];
@@ -27,7 +41,8 @@ window.openDetailModal = function(record) {
   document.getElementById("detailInvoiceRegistrationNumber").value = record["適格事業者登録番号"] || "";
   setTaxInputValues("detailTaxRate", "detailAmountExcl", "detailAmountIncl", "detailCurrency", record["通貨"], record["税率"], record["金額（税抜）"], record["金額（税込）"]);
   document.getElementById("detailTransactionDate").value = toDateInputValue(record["取引日"]);
-  document.getElementById("detailSubmitBtn").textContent = isConfirmMode ? "確定保存" : "更新する";
+  const submitBtn = document.getElementById("detailSubmitBtn");
+  submitBtn.textContent = isConfirmMode ? "確定保存" : "更新する";
 
   // ゴミ箱への移動は確定済み・確認待ちの両方で許可する（サーバー側でもOCR処理中は拒否される）
   document.getElementById("detailDeleteBtn").style.display = "inline-flex";
@@ -54,7 +69,7 @@ window.openDetailModal = function(record) {
     : '<div class="detail-preview-empty">プレビューを表示できません（Drive保存前のファイルです）</div>';
 
   document.getElementById("detailModal").style.display = "flex";
-  // 一覧から開いたときは、常に一番上から表示する。
+  // 一覧から開いたとき・前後のファイルへ移動したときは、常に一番上から表示する。
   // 狭い画面は本文全体、PC画面（プレビューを左に表示）はフォームだけがスクロールするため、両方を戻す
   document.querySelector("#detailModal .modal-body").scrollTop = 0;
   document.getElementById("detailForm").scrollTop = 0;
@@ -63,6 +78,67 @@ window.openDetailModal = function(record) {
   // 確定済みファイルの更新では、変更が無い間は「更新する」を押せない（前回エラーで無効化されたままの状態もここで解除される）
   detailInitialData = collectDetailFormData();
   updateDetailSubmitState();
+  refreshDetailNav();
+};
+
+// =================================================================
+// 前のファイル／次のファイルへの移動（一覧に表示中の並び順）
+//   ・「前へ」＝一覧の上（新しい方）、「次へ」＝一覧の下（古い方）。ページをまたいで移動する
+//   ・OCR処理中で編集できないファイルは、飛ばして次の編集できるファイルへ移動する
+//   ・未保存の変更があるときは、確認してから移動する
+// =================================================================
+
+/** 開いているファイルから見て、指定方向（-1：前／1：次）にある、編集できる最初のレコード。無ければ null */
+function findAdjacentEditableRecord(delta) {
+  const fileId = document.getElementById("detailFileId").value;
+  const index = currentListRecords.findIndex(record => record["ファイルID"] === fileId);
+  if (index === -1) return null; // 一覧に無い（絞り込みから外れた・ゴミ箱へ移動した場合など）
+  for (let i = index + delta; i >= 0 && i < currentListRecords.length; i += delta) {
+    if (!isRecordLocked(currentListRecords[i])) return currentListRecords[i];
+  }
+  return null;
+}
+
+/** 下部バーの「前へ／次へ」の有効・無効と、「3 / 120」の位置表示を、現在の一覧に合わせる */
+function refreshDetailNav() {
+  if (document.getElementById("detailModal").style.display === "none") return;
+
+  const fileId = document.getElementById("detailFileId").value;
+  const index = currentListRecords.findIndex(record => record["ファイルID"] === fileId);
+  document.getElementById("detailNavPosition").textContent =
+    index === -1 ? "" : `${index + 1} / ${currentListRecords.length}`;
+  document.getElementById("detailNavPrevBtn").disabled = !findAdjacentEditableRecord(-1);
+  document.getElementById("detailNavNextBtn").disabled = !findAdjacentEditableRecord(1);
+}
+
+/** 保存していない変更があるとき、破棄して移動してよいかを確認する。移動する場合は true */
+async function confirmDiscardDetailChanges(changes) {
+  const result = await Swal.fire({
+    title: "保存していない変更があります",
+    text: `変更した項目：${changes.map(c => c.label).join("、")}。破棄して移動しますか？`,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#dc2626",
+    confirmButtonText: "破棄して移動",
+    cancelButtonText: "キャンセル"
+  });
+  return result.isConfirmed;
+}
+
+/** 前のファイル（delta=-1）／次のファイル（delta=1）の編集画面へ移動する */
+window.moveDetail = async function(delta) {
+  if (isDetailMoving || isDetailSaving) return;
+  const target = findAdjacentEditableRecord(delta);
+  if (!target) return;
+
+  isDetailMoving = true;
+  try {
+    const changes = getDetailChanges();
+    if (changes.length > 0 && !(await confirmDiscardDetailChanges(changes))) return;
+    openDetailModal(target);
+  } finally {
+    isDetailMoving = false;
+  }
 };
 
 // =================================================================
@@ -230,6 +306,7 @@ async function handleDetailSubmit(event) {
   const submitBtn = document.getElementById("detailSubmitBtn");
   submitBtn.disabled = true;
   submitBtn.textContent = mode === "confirm" ? "保存中..." : "更新中...";
+  isDetailSaving = true; // 保存が終わるまで、前後のファイルへは移動できない
 
   showToast(mode === "confirm" ? "確定保存中..." : "更新中...", true);
 
@@ -247,6 +324,7 @@ async function handleDetailSubmit(event) {
     // 失敗した場合、モーダルは開いたままなのでボタンを再度押せるように戻す
     submitBtn.disabled = false;
     submitBtn.textContent = mode === "confirm" ? "確定保存" : "更新する";
+    isDetailSaving = false;
   }
 }
 
